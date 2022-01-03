@@ -1,0 +1,3 @@
+[submodule "hand-toy"]
+	path = hand-toy
+	url = https://github.com/drewsapple/hand-toy.git
