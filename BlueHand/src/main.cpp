@@ -88,7 +88,7 @@ void setup() {
 
   test1.setValue(100.0);
   test2.setValue(50.14);
-  test3.setValue(0.001);
+  test3.setValue(0.01);
   test1.notify();
   test2.notify();
   test3.notify();
@@ -101,7 +101,7 @@ void loop() {
     if (deviceConnected) {
         float time = (float) millis();
         //Serial.println(time);
-        test1.setValue((float)sin(time * test3.getFloat()));
+        test1.setValue((float)sin(time/1000.0 * test3.getFloat()));
         test1.notify();
         test2.notify();
         test3.notify();
