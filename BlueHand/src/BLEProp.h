@@ -4,21 +4,31 @@
 #include <BLEUtils.h>
 #include <BLEServer.h>
 #include <BLE2902.h>
+#include <BLE2904.h>
 #include <Arduino.h>
 
+union FloatConversion {
+    float f;
+    unsigned char byte[4];
+};
 
 class BLEProp {
     public:
-        BLEProp(const char * uuidS, const char * uuidC, const float min, const float max);
+        BLEProp(const char * uuidS, const char * uuidC, uint32_t properties, int8_t _byteCount);
         void setCallbacks(BLECharacteristicCallbacks * callbacks);
         void start();
         void notify();
         void setValue(float value);
+        const char * getStr();
+        float getFloat();
         void attach(BLEServer * pServer);
+        int8_t byteCount;
+
     private:
         const char * uuidService;
         const char * uuidCharacteristic;
         BLEService * pService;
         BLECharacteristic * pCharacteristic;
+        uint32_t characteristicProperties;
 };
 #endif

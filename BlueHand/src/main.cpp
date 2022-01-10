@@ -33,9 +33,12 @@ uint8_t txValue = 0;
 #define CHARACTERISTIC_UUID_TEST1 "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
 #define SERVICE_UUID_TEST2 "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
 #define CHARACTERISTIC_UUID_TEST2 "6e400004-b5a3-f393-e0a9-e50e24dcca9e"
+#define SERVICE_UUID_TEST3 "6e400005-b5a3-f393-e0a9-e50e24dcca9e"
+#define CHARACTERISTIC_UUID_TEST3 "6e400006-b5a3-f393-e0a9-e50e24dcca9e"
 
-BLEProp test1(SERVICE_UUID_TEST1, CHARACTERISTIC_UUID_TEST1, 0.0, 100.0);
-BLEProp test2(SERVICE_UUID_TEST2, CHARACTERISTIC_UUID_TEST2, 0.0, 100.0);
+BLEProp test1(SERVICE_UUID_TEST1, CHARACTERISTIC_UUID_TEST1, BLECharacteristic::PROPERTY_NOTIFY, 4);
+BLEProp test2(SERVICE_UUID_TEST2, CHARACTERISTIC_UUID_TEST2, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
+BLEProp test3(SERVICE_UUID_TEST3, CHARACTERISTIC_UUID_TEST3, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
 
 
 class MyServerCallbacks: public BLEServerCallbacks {
@@ -53,13 +56,7 @@ class MyCallbacks: public BLECharacteristicCallbacks {
       std::string rxValue = pCharacteristic->getValue();
 
       if (rxValue.length() > 0) {
-        Serial.println("*********");
-        Serial.print("Received Value: ");
-        for (int i = 0; i < rxValue.length(); i++)
-          Serial.print(rxValue[i]);
 
-        Serial.println();
-        Serial.println("*********");
       }
     }
 };
@@ -75,13 +72,12 @@ void setup() {
 
   test1.attach(pServer);
   test2.attach(pServer);
+  test3.attach(pServer);
 
   Serial.println("Server initialized");
   // Create the BLE Server
   pServer->setCallbacks(new MyServerCallbacks());
 
-  test1.setValue(100.0);
-  test2.setValue(50.14);
 
   //test1.setCallbacks(new MyCallbacks());
 
@@ -89,15 +85,27 @@ void setup() {
   // Start advertising
   pServer->getAdvertising()->setScanResponse(true);
   pServer->getAdvertising()->start();
+
+  test1.setValue(100.0);
+  test2.setValue(50.14);
+  test3.setValue(0.001);
+  test1.notify();
+  test2.notify();
+  test3.notify();
+
   Serial.println("Waiting a client connection to notify...");
 }
 
 void loop() {
 
     if (deviceConnected) {
+        float time = (float) millis();
+        //Serial.println(time);
+        test1.setValue((float)sin(time * test3.getFloat()));
         test1.notify();
         test2.notify();
-		delay(10); // bluetooth stack will go into congestion, if too many packets are sent
+        test3.notify();
+		delay(50); // bluetooth stack will go into congestion, if too many packets are sent
 	}
 
     // disconnecting
@@ -106,10 +114,12 @@ void loop() {
         pServer->startAdvertising(); // restart advertising
         Serial.println("start advertising");
         oldDeviceConnected = deviceConnected;
+        Serial.println("Client Disconnected");
     }
     // connecting
     if (deviceConnected && !oldDeviceConnected) {
 		// do stuff here on connecting
         oldDeviceConnected = deviceConnected;
+        Serial.println("Client Connected");
     }
 }
