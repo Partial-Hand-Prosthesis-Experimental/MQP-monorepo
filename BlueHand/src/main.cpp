@@ -105,7 +105,7 @@ void loop() {
         test1.notify();
         test2.notify();
         test3.notify();
-		delay(50); // bluetooth stack will go into congestion, if too many packets are sent
+		delay(10); // bluetooth stack will go into congestion, if too many packets are sent
 	}
 
     // disconnecting
