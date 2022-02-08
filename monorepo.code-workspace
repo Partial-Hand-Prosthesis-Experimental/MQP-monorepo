@@ -5,6 +5,10 @@
 		},
 		{
 			"path": "BlueHand"
+		},
+		{
+			"name": "reskin",
+			"path": "reskin"
 		}
 	],
 	"settings": {}
