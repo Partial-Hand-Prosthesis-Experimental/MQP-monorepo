@@ -23,7 +23,12 @@ void BLEProp::setValue(float value)
     pCharacteristic->setValue(value);
 }
 
-const char * BLEProp::getStr()
+void BLEProp::setBytes(uint8_t *bytes, size_t len)
+{
+    pCharacteristic->setValue(bytes, len);
+}
+
+const char *BLEProp::getStr()
 {
     return pCharacteristic->getValue().c_str();
 }
@@ -32,11 +37,17 @@ float BLEProp::getFloat()
 {
     int byteIdx = 0;
     FloatConversion conversion;
-    for(byteIdx; byteIdx < 4; byteIdx++){
+    for (byteIdx; byteIdx < 4; byteIdx++)
+    {
         conversion.byte[byteIdx] = pCharacteristic->getValue().c_str()[byteIdx];
     }
 
     return conversion.f;
+}
+
+uint8_t *BLEProp::getData()
+{
+    return pCharacteristic->getData();
 }
 
 void BLEProp::notify()

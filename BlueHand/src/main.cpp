@@ -35,10 +35,15 @@ uint8_t txValue = 0;
 #define CHARACTERISTIC_UUID_TEST2 "6e400004-b5a3-f393-e0a9-e50e24dcca9e"
 #define SERVICE_UUID_TEST3 "6e400005-b5a3-f393-e0a9-e50e24dcca9e"
 #define CHARACTERISTIC_UUID_TEST3 "6e400006-b5a3-f393-e0a9-e50e24dcca9e"
+#define SERVICE_UUID_VIBCONF "6e400007-b5a3-f393-e0a9-e50e24dcca9e"
+#define CHARACTERISTIC_UUID_VIBCONF "6e400008-b5a3-f393-e0a9-e50e24dcca9e"
 
 BLEProp test1(SERVICE_UUID_TEST1, CHARACTERISTIC_UUID_TEST1, BLECharacteristic::PROPERTY_NOTIFY, 4);
 BLEProp test2(SERVICE_UUID_TEST2, CHARACTERISTIC_UUID_TEST2, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
 BLEProp test3(SERVICE_UUID_TEST3, CHARACTERISTIC_UUID_TEST3, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
+BLEProp vibConf(SERVICE_UUID_VIBCONF, CHARACTERISTIC_UUID_VIBCONF, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 20);
+
+uint8_t jittercheck = 0;
 
 
 class MyServerCallbacks: public BLEServerCallbacks {
@@ -73,6 +78,7 @@ void setup() {
   test1.attach(pServer);
   test2.attach(pServer);
   test3.attach(pServer);
+  vibConf.attach(pServer);
 
   Serial.println("Server initialized");
   // Create the BLE Server
@@ -86,9 +92,24 @@ void setup() {
   pServer->getAdvertising()->setScanResponse(true);
   pServer->getAdvertising()->start();
 
+  uint8_t vibConfStart[] = {
+    255,
+    255,
+    0,
+    0,
+    127,
+    127,
+    63,
+    31
+};
+
+  vibConf.setBytes((uint8_t*)&vibConfStart, 8);
+
   test1.setValue(100.0);
   test2.setValue(50.14);
   test3.setValue(0.01);
+
+  vibConf.notify();
   test1.notify();
   test2.notify();
   test3.notify();
@@ -105,6 +126,7 @@ void loop() {
         test1.notify();
         test2.notify();
         test3.notify();
+        vibConf.notify();
 		delay(10); // bluetooth stack will go into congestion, if too many packets are sent
 	}
 
