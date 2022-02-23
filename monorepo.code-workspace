@@ -9,6 +9,12 @@
 		{
 			"name": "reskin",
 			"path": "reskin"
+		},
+		{
+			"path": "sketch_dec27a"
+		},
+		{
+			"path": "Velostat_to_Haptic"
 		}
 	],
 	"settings": {}
