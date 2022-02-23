@@ -1,0 +1,44 @@
+Info: Checking netlist symbol footprint "INA3:/62089DF3:KICAD Third Party:SOIC127P599X175-8N".
+Info: Checking netlist symbol footprint "R3:/62089DEA:Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder".
+Info: Checking netlist symbol footprint "R4:/62090015:Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder".
+Info: Checking netlist symbol footprint "R2:/62086F81:Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder".
+Info: Checking netlist symbol footprint "R1:/60DE14E0:Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder".
+Info: Checking netlist symbol footprint "R5:/620A5A90:Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder".
+Info: Checking netlist symbol footprint "J2:/620763AA:Connector_PinHeader_2.54mm:PinHeader_1x05_P2.54mm_Vertical".
+Info: Checking netlist symbol footprint "J1:/6207018B:Connector_PinHeader_2.54mm:PinHeader_1x12_P2.54mm_Vertical".
+Info: Checking netlist symbol footprint "Ref1:/62081531:Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder".
+Info: Checking netlist symbol footprint "INA5:/620A5A99:KICAD Third Party:SOIC127P599X175-8N".
+Info: Checking netlist symbol footprint "INA4:/6209001E:KICAD Third Party:SOIC127P599X175-8N".
+Info: Checking netlist symbol footprint "Ref2:/62086F99:Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder".
+Info: Checking netlist symbol footprint "Ref4:/6209002D:Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder".
+Info: Checking netlist symbol footprint "C1:/60DDFA8E:Capacitor_SMD:C_1206_3216Metric_Pad1.33x1.80mm_HandSolder".
+Info: Checking netlist symbol footprint "C2:/62086F7B:Capacitor_SMD:C_1206_3216Metric_Pad1.33x1.80mm_HandSolder".
+Info: Checking netlist symbol footprint "Ref5:/620A5AA8:Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder".
+Info: Checking netlist symbol footprint "C3:/62089DE4:Capacitor_SMD:C_1206_3216Metric_Pad1.33x1.80mm_HandSolder".
+Info: Checking netlist symbol footprint "C4:/6209000F:Capacitor_SMD:C_1206_3216Metric_Pad1.33x1.80mm_HandSolder".
+Info: Checking netlist symbol footprint "INA2:/62086F8A:KICAD Third Party:SOIC127P599X175-8N".
+Info: Checking netlist symbol footprint "C5:/620A5A8A:Capacitor_SMD:C_1206_3216Metric_Pad1.33x1.80mm_HandSolder".
+Info: Checking netlist symbol footprint "INA1:/620745AC:KICAD Third Party:SOIC127P599X175-8N".
+Info: Checking netlist symbol footprint "Ref3:/62089E02:Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder".
+Adding new symbol Ref3 footprint Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder.
+Adding new symbol R5 footprint Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder.
+Adding new symbol Ref1 footprint Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder.
+Adding new symbol Ref4 footprint Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder.
+Adding new symbol R4 footprint Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder.
+Adding new symbol Ref5 footprint Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder.
+Adding new symbol Ref2 footprint Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder.
+Adding new symbol R3 footprint Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder.
+Adding new symbol R2 footprint Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder.
+Adding new symbol R1 footprint Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder.
+Adding new symbol J2 footprint Connector_PinHeader_2.54mm:PinHeader_1x05_P2.54mm_Vertical.
+Adding new symbol J1 footprint Connector_PinHeader_2.54mm:PinHeader_1x12_P2.54mm_Vertical.
+Adding new symbol INA5 footprint KICAD Third Party:SOIC127P599X175-8N.
+Adding new symbol INA4 footprint KICAD Third Party:SOIC127P599X175-8N.
+Adding new symbol INA3 footprint KICAD Third Party:SOIC127P599X175-8N.
+Adding new symbol INA2 footprint KICAD Third Party:SOIC127P599X175-8N.
+Adding new symbol INA1 footprint KICAD Third Party:SOIC127P599X175-8N.
+Adding new symbol C5 footprint Capacitor_SMD:C_1206_3216Metric_Pad1.33x1.80mm_HandSolder.
+Adding new symbol C4 footprint Capacitor_SMD:C_1206_3216Metric_Pad1.33x1.80mm_HandSolder.
+Adding new symbol C3 footprint Capacitor_SMD:C_1206_3216Metric_Pad1.33x1.80mm_HandSolder.
+Adding new symbol C2 footprint Capacitor_SMD:C_1206_3216Metric_Pad1.33x1.80mm_HandSolder.
+Adding new symbol C1 footprint Capacitor_SMD:C_1206_3216Metric_Pad1.33x1.80mm_HandSolder.

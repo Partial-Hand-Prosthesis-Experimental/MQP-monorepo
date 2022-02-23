@@ -1,0 +1,9 @@
+Manufacturer=Texas Instruments
+PartNumber=INA2331AIPWR
+PartCategory=Integrated Circuit
+PackageCategory=Small Outline Packages
+PinCount=14
+Version=1.1
+Released=2019-12-05 11:56:03
+Downloaded=2021-07-01 14:38:15
+3D=Y
