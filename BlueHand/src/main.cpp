@@ -21,7 +21,8 @@
 #include <BLEServer.h>
 #include <BLEProp.h>
 #include <Wire.h>
-#include "Adafruit_DRV2605.h"
+#include "Motor.h"
+#include "Haptics.h"
 #include "Preferences.h"
 
 BLEServer *pServer = NULL;
@@ -31,52 +32,28 @@ uint8_t txValue = 0;
 int velo0pin = 15;
 int velo1pin = 4;
 
-
-Adafruit_DRV2605 drv0;
-Adafruit_DRV2605 drv1;
-Adafruit_DRV2605 drv2;
-Adafruit_DRV2605 *drv;
+Motor motor(25, 33, 26);
+Haptics haptics(2);
 
 // See the following for generating UUIDs:
 // https://www.uuidgenerator.net/
 
 #define SERVICE_UUID_TEST1 "1a6a0dc9-7db0-4e5f-8b48-5122af7d0b73" // UART service UUID
 #define CHARACTERISTIC_UUID_TEST1 "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
-#define SERVICE_UUID_TEST2 "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
-#define CHARACTERISTIC_UUID_TEST2 "6e400004-b5a3-f393-e0a9-e50e24dcca9e"
 #define SERVICE_UUID_TEST3 "6e400005-b5a3-f393-e0a9-e50e24dcca9e"
 #define CHARACTERISTIC_UUID_TEST3 "6e400006-b5a3-f393-e0a9-e50e24dcca9e"
 #define SERVICE_UUID_VIBCONF "6e400007-b5a3-f393-e0a9-e50e24dcca9e"
 #define CHARACTERISTIC_UUID_VIBCONF "6e400008-b5a3-f393-e0a9-e50e24dcca9e"
+#define SERVICE_UUID_VELO1 "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
+#define CHARACTERISTIC_UUID_VELO1 "6e400004-b5a3-f393-e0a9-e50e24dcca9e"
+#define SERVICE_UUID_VELO2 "6e400009-b5a3-f393-e0a9-e50e24dcca9e"
+#define CHARACTERISTIC_UUID_VELO2 "6e40000a-b5a3-f393-e0a9-e50e24dcca9e"
 
-#define TCAADDR 0x70
 
-void vibeselect(uint8_t i)
-{
-  if (i > 7)
-    return;
-
-  switch (i)
-  {
-  case 0:
-    drv = &drv0;
-    break;
-  case 1:
-    drv = &drv1;
-    break;
-  case 2:
-    drv = &drv2;
-    break;
-  }
-
-  Wire.beginTransmission(TCAADDR);
-  Wire.write(1 << i);
-  Wire.endTransmission();
-}
-
-BLEProp test1(SERVICE_UUID_TEST1, CHARACTERISTIC_UUID_TEST1, BLECharacteristic::PROPERTY_NOTIFY, 4);
-BLEProp velo1(SERVICE_UUID_TEST2, CHARACTERISTIC_UUID_TEST2, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
+BLEProp test1(SERVICE_UUID_TEST1, CHARACTERISTIC_UUID_TEST1, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
 BLEProp test3(SERVICE_UUID_TEST3, CHARACTERISTIC_UUID_TEST3, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
+BLEProp velo1(SERVICE_UUID_VELO1, CHARACTERISTIC_UUID_VELO1, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
+BLEProp velo2(SERVICE_UUID_VELO2, CHARACTERISTIC_UUID_VELO2, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
 BLEProp vibConf(SERVICE_UUID_VIBCONF, CHARACTERISTIC_UUID_VIBCONF, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 20);
 
 Preferences preferences;
@@ -127,9 +104,10 @@ void setup()
   pServer = BLEDevice::createServer();
 
   test1.attach(pServer);
-  velo1.attach(pServer);
   test3.attach(pServer);
   vibConf.attach(pServer);
+  velo1.attach(pServer);
+  velo2.attach(pServer);
 
   Serial.println("Server initialized");
   // Create the BLE Server
@@ -143,30 +121,15 @@ void setup()
 
   vibConf.setBytes((uint8_t *)&vibConfStart, 8);
 
-  Wire.begin();
-  for (int i = 0; i < 3; i++)
-  {
-    vibeselect(i);
-
-    //drv setup
-    drv->begin();
-
-    // I2C trigger by sending 'go' command
-    drv->setMode(DRV2605_MODE_INTTRIG); // default, internal trigger when sending GO command
-
-    drv->selectLibrary(1);
-    drv->setWaveform(0, 14); // ramp up medium 1, see datasheet part 11.2
-    //drv->setWaveform(1, 47); // strong click 100%, see datasheet part 11.2
-    drv->setWaveform(1, 0); // end of waveforms
-  }
-
   test1.setValue(100.0);
-  velo1.setValue(2.4);
-  test3.setValue(0.01);
+  test3.setValue(500.0);
+  velo1.setValue(0.0);
+  velo2.setValue(0.0);
 
   vibConf.notify();
-  test1.notify();
   velo1.notify();
+  velo2.notify();
+  test1.notify();
   test3.notify();
 
   Serial.println("Waiting a client connection to notify...");
@@ -174,15 +137,17 @@ void setup()
 
 void loop()
 {
-
   if (deviceConnected)
   {
     float time = (float)millis();
     //Serial.println(time);
-    test1.setValue((float)sin(time / 1000.0 * test3.getFloat()));
+    motor.position(test3.getFloat());
+    test1.setValue(analogRead(26)*1.0);
     test1.notify();
     velo1.setValue((float)65.7 * powf(analogReadMilliVolts(velo0pin) / 1000.0, -1.35));
     velo1.notify();
+    velo2.setValue((float)65.7 * powf(analogReadMilliVolts(velo1pin) / 1000.0, -1.35));
+    velo2.notify();
     test3.notify();
     vibConf.notify();
     delay(10); // bluetooth stack will go into congestion if too many packets are sent
@@ -212,21 +177,21 @@ void loop()
       uint8_t *vibUpdate = vibConf.getData();
       vibUpdate[2 + i] = 0;
       vibConf.setBytes(vibUpdate, 8);
-      vibeselect(i);
+      haptics.vibeselect(i);
       Serial.print("go on haptic #");
       Serial.println(i);
-      drv->go();
+      haptics.drv->go();
     }
 
     if ((float)65.7 * powf(analogReadMilliVolts(velo0pin) / 1000.0, -1.35) > 300)
     {
-      vibeselect(0);
-      drv->go();
+      haptics.vibeselect(0);
+      haptics.drv->go();
     }
     if ((float)65.7 * powf(analogReadMilliVolts(velo1pin) / 1000.0, -1.35) > 300)
     {
-      vibeselect(1);
-      drv->go();
+      haptics.vibeselect(1);
+      haptics.drv->go();
     }
   }
 }
