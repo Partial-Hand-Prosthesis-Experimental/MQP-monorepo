@@ -1,9 +1,9 @@
 #include "Motor.h"
 
-Motor::Motor(int pinA1, int pinA2, int pinPot) {
+Motor::Motor(int pinA1, int pinA2, volatile int* potReading, volatile int* currentReading) {
     _pinA1 = pinA1;
     _pinA2 = pinA2;
-    _pinPot = pinPot;
+    _potReading = potReading;
     // Setup the pwm channels
     ledcSetup(0, 20000, 16);
     ledcAttachPin(_pinA1, 0);
@@ -14,10 +14,13 @@ Motor::Motor(int pinA1, int pinA2, int pinPot) {
     _pid.reset();
     _pid.setPID(0.0005, 0.0005, 0.00001);
     _pid.setOutputLimits(-0.8, 0.8);
+
+
+    // xTaskCreatePinnedToCore(task, "Controller", 256, args, 1, NULL, 1);
 }
 
-Motor::Motor(int pinA1, int pinA2, int pinPot, BLEProp prop) {
-    Motor(pinA1, pinA2, pinPot);
+Motor::Motor(int pinA1, int pinA2, volatile int* potReading, volatile int* currentReading, BLEProp* prop) {
+    Motor(pinA1, pinA2, potReading, currentReading);
     _prop = prop;
 }
 
@@ -35,6 +38,6 @@ void Motor::speed(float_t speed) {
 
 void Motor::position(float_t position) {
     // sensor, target
-    float_t out = (float_t)_pid.getOutput(analogRead(_pinPot), position);
+    float_t out = (float_t)_pid.getOutput(*_potReading, position);
     speed(out);
 }

@@ -29,16 +29,29 @@ BLEServer *pServer = NULL;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
 uint8_t txValue = 0;
+
 int velo0pin = 15;
 int velo1pin = 4;
 
-Motor motor(25, 33, 26);
+int potPin = 26;
+int currentPin = 27;
+volatile int potReading = 0;
+volatile int currentReading = 0;
+
+// Timer setup
+#define TIMER0_INTERVAL_US        50
+
+void IRAM_ATTR TimerHandler0();
+portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+hw_timer_t * timer = NULL;
+
+Motor motor(25, 33, &potReading, &currentReading);
 Haptics haptics(2);
 
 // See the following for generating UUIDs:
 // https://www.uuidgenerator.net/
 
-#define SERVICE_UUID_TEST1 "1a6a0dc9-7db0-4e5f-8b48-5122af7d0b73" // UART service UUID
+#define SERVICE_UUID_TEST1 "1a6a0dc9-7db0-4e5f-8b48-5122af7d0b73"
 #define CHARACTERISTIC_UUID_TEST1 "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
 #define SERVICE_UUID_TEST3 "6e400005-b5a3-f393-e0a9-e50e24dcca9e"
 #define CHARACTERISTIC_UUID_TEST3 "6e400006-b5a3-f393-e0a9-e50e24dcca9e"
@@ -58,31 +71,6 @@ BLEProp vibConf(SERVICE_UUID_VIBCONF, CHARACTERISTIC_UUID_VIBCONF, BLECharacteri
 
 Preferences preferences;
 
-class MyServerCallbacks : public BLEServerCallbacks
-{
-  void onConnect(BLEServer *pServer)
-  {
-    deviceConnected = true;
-  };
-
-  void onDisconnect(BLEServer *pServer)
-  {
-    deviceConnected = false;
-  }
-};
-
-class MyCallbacks : public BLECharacteristicCallbacks
-{
-  void onWrite(BLECharacteristic *pCharacteristic)
-  {
-    std::string rxValue = pCharacteristic->getValue();
-
-    if (rxValue.length() > 0)
-    {
-    }
-  }
-};
-
 void setup()
 {
   Serial.begin(115200);
@@ -101,6 +89,7 @@ void setup()
 
   // Create the BLE Device
   BLEDevice::init("Prosthesis");
+  BLEDevice::setMTU(64); // Wish this worked but I don't think it will
   pServer = BLEDevice::createServer();
 
   test1.attach(pServer);
@@ -110,10 +99,6 @@ void setup()
   velo2.attach(pServer);
 
   Serial.println("Server initialized");
-  // Create the BLE Server
-  pServer->setCallbacks(new MyServerCallbacks());
-
-  //test1.setCallbacks(new MyCallbacks());
 
   // Start advertising
   pServer->getAdvertising()->setScanResponse(true);
@@ -122,7 +107,7 @@ void setup()
   vibConf.setBytes((uint8_t *)&vibConfStart, 8);
 
   test1.setValue(100.0);
-  test3.setValue(500.0);
+  test3.setValue(0.0);
   velo1.setValue(0.0);
   velo2.setValue(0.0);
 
@@ -133,6 +118,14 @@ void setup()
   test3.notify();
 
   Serial.println("Waiting a client connection to notify...");
+
+
+  // Setup timer
+  timer = timerBegin(0, 80, true);
+  timerAttachInterrupt(timer, &TimerHandler0, true);
+  timerAlarmWrite(timer, 500, true);
+  timerAlarmEnable(timer);
+
 }
 
 void loop()
@@ -142,7 +135,7 @@ void loop()
     float time = (float)millis();
     //Serial.println(time);
     motor.position(test3.getFloat());
-    test1.setValue(analogRead(26)*1.0);
+    test1.setValue(potReading);
     test1.notify();
     velo1.setValue((float)65.7 * powf(analogReadMilliVolts(velo0pin) / 1000.0, -1.35));
     velo1.notify();
@@ -194,4 +187,12 @@ void loop()
       haptics.drv->go();
     }
   }
+}
+
+void IRAM_ATTR TimerHandler0()
+{
+    portENTER_CRITICAL_ISR(&timerMux);
+    potReading = analogRead(potPin);
+    currentReading = analogRead(currentPin);
+    portEXIT_CRITICAL_ISR(&timerMux);
 }
