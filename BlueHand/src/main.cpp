@@ -89,7 +89,7 @@ void setup()
 
   // Create the BLE Device
   BLEDevice::init("Prosthesis");
-  BLEDevice::setMTU(64); // Wish this worked but I don't think it will
+  // BLEDevice::setMTU(64); // Wish this worked but I don't think it does on windows
   pServer = BLEDevice::createServer();
 
   test1.attach(pServer);
@@ -150,6 +150,8 @@ void loop()
   if (!deviceConnected && oldDeviceConnected)
   {
     delay(500);                  // give the bluetooth stack the chance to get things ready
+    pServer->disconnect(0);
+    pServer->getAdvertising()->setScanResponse(true);
     pServer->startAdvertising(); // restart advertising
     Serial.println("start advertising");
     oldDeviceConnected = deviceConnected;
