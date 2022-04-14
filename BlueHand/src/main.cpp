@@ -62,6 +62,9 @@ Haptics haptics(2);
 #define SERVICE_UUID_VELO2 "6e400009-b5a3-f393-e0a9-e50e24dcca9e"
 #define CHARACTERISTIC_UUID_VELO2 "6e40000a-b5a3-f393-e0a9-e50e24dcca9e"
 
+#define SERVICE_UUID_VELO2 "6e40000b-b5a3-f393-e0a9-e50e24dcca9e"
+#define CHARACTERISTIC_UUID_VELO2 "6e40000d-b5a3-f393-e0a9-e50e24dcca9e"
+
 
 BLEProp test1(SERVICE_UUID_TEST1, CHARACTERISTIC_UUID_TEST1, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
 BLEProp test3(SERVICE_UUID_TEST3, CHARACTERISTIC_UUID_TEST3, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
@@ -70,6 +73,8 @@ BLEProp velo2(SERVICE_UUID_VELO2, CHARACTERISTIC_UUID_VELO2, BLECharacteristic::
 BLEProp vibConf(SERVICE_UUID_VIBCONF, CHARACTERISTIC_UUID_VIBCONF, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 20);
 
 Preferences preferences;
+
+void doBrian();
 
 void setup()
 {
@@ -189,8 +194,20 @@ void loop()
       haptics.drv->go();
     }
   }
+
+  doBrian();
 }
 
+void doBrian() {
+    static unsigned long lastTime = micros();
+    if(micros() - lastTime> 2000000) {
+      Serial.print("Brian Interval: ");
+      Serial.println(micros()-lastTime);
+      lastTime = micros();
+    }
+}
+
+// Currently Runs at 20khz, see #define TIMER0_INTERVAL_US        50
 void IRAM_ATTR TimerHandler0()
 {
     portENTER_CRITICAL_ISR(&timerMux);
