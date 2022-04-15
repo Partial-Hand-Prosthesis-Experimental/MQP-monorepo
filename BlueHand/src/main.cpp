@@ -111,7 +111,7 @@ State s = calibration;
 // Global Consts
 const int sensor_num = 6;
 const int interval_duration = 2000; // ms
-const int intervals = 10;
+const int intervals = 13;           // 13 is max memorywise
 const int samples_per_interval = 125;
 const int time_per_sample = interval_duration / samples_per_interval;
 const int calib_duration = interval_duration * intervals;
@@ -285,7 +285,7 @@ void loop()
     }
   }
 
-  int pos = doBrian(true);
+  int pos = doBrian(false);
 }
 
 // Currently Runs at 20khz, see #define TIMER0_INTERVAL_US        50
@@ -377,7 +377,9 @@ int doBrian(bool debug_prints)
           digitalWrite(LED_pin, HIGH);
           Serial.print("Calibrating at pos ");
           Serial.print(pos);
-          Serial.println("/125 while opening");
+          Serial.print("/");
+          Serial.print(samples_per_interval);
+          Serial.println(" while opening");
         }
         else
         { // count position backwards if closing
@@ -385,7 +387,9 @@ int doBrian(bool debug_prints)
           digitalWrite(LED_pin, LOW);
           Serial.print("Calibrating at pos ");
           Serial.print(pos);
-          Serial.println("/125 while closing");
+          Serial.print("/");
+          Serial.print(samples_per_interval);
+          Serial.println(" while closing");
         }
 
         current_time = millis();
@@ -524,7 +528,7 @@ int doBrian(bool debug_prints)
       int hall_6 = Hall6KalmanFilter.updateEstimate(analogRead(Hall_6_Pin));
 
       // K Nearest Neighbor
-      int k = 100;//TODO tune
+      int k = 100; // TODO tune
       float input[] = {adc2v(hall_1), adc2v(hall_2), adc2v(hall_3), adc2v(hall_4), adc2v(hall_5), adc2v(hall_6)};
       int position = myKNN.classify(input, k);
       float confidence = myKNN.confidence();
@@ -557,10 +561,13 @@ int doBrian(bool debug_prints)
         Serial.print(estimated_pos);
       }
       // TODO use confidence to set noise (q)
+      float target_pos = estimated_pos / samples_per_interval;
+      Serial.print(" Confidence: ");
+      Serial.print(confidence);
       Serial.print(" Target Position: ");
-      Serial.println(estimated_pos);
-      // delay(1000);
-      return estimated_pos;
+      Serial.println(target_pos);
+      // delay(100);
+      return target_pos;
     }
 
     calib_button_push = digitalRead(calib_button_pin);
