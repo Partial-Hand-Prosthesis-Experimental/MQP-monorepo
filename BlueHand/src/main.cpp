@@ -94,7 +94,6 @@ const int Hall_3_Pin = 27;
 const int Hall_4_Pin = 15;
 const int Hall_5_Pin = 14;
 const int Hall_6_Pin = 4;
-const int Hall_7_Pin = 33;
 
 // States
 int buttonState = 0;
@@ -112,7 +111,7 @@ State s = calibration;
 // Global Consts
 const int sensor_num = 6;
 const int interval_duration = 2000; // ms
-const int intervals = 4;
+const int intervals = 10;
 const int samples_per_interval = 125;
 const int time_per_sample = interval_duration / samples_per_interval;
 const int calib_duration = interval_duration * intervals;
@@ -130,9 +129,16 @@ unsigned long current_time;
 unsigned long elapsed_time;
 
 // Kalman Filter
+float noise = .00875;
 SimpleKalmanFilter pressureKalmanFilter(1, 1, 0.01);
+SimpleKalmanFilter Hall1KalmanFilter(1, 1, noise);
+SimpleKalmanFilter Hall2KalmanFilter(1, 1, noise);
+SimpleKalmanFilter Hall3KalmanFilter(1, 1, noise);
+SimpleKalmanFilter Hall4KalmanFilter(1, 1, noise);
+SimpleKalmanFilter Hall5KalmanFilter(1, 1, noise);
+SimpleKalmanFilter Hall6KalmanFilter(1, 1, noise);
 // KNN Clasifier
-KNNClassifier myKNN(6); // same as sensor_num
+KNNClassifier myKNN(sensor_num); // same as sensor_num
 
 void setup()
 {
@@ -189,6 +195,26 @@ void setup()
   pinMode(LED_pin, OUTPUT);
 
   // Kalman Filter Setup
+  int hall_1 = Hall1KalmanFilter.updateEstimate(analogRead(Hall_1_Pin));
+  int hall_2 = Hall2KalmanFilter.updateEstimate(analogRead(Hall_2_Pin));
+  int hall_3 = Hall3KalmanFilter.updateEstimate(analogRead(Hall_3_Pin));
+  int hall_4 = Hall4KalmanFilter.updateEstimate(analogRead(Hall_4_Pin));
+  int hall_5 = Hall5KalmanFilter.updateEstimate(analogRead(Hall_5_Pin));
+  int hall_6 = Hall6KalmanFilter.updateEstimate(analogRead(Hall_6_Pin));
+
+  int init_i = 0;
+  do
+  {
+    hall_1 = Hall1KalmanFilter.updateEstimate(analogRead(Hall_1_Pin));
+    hall_2 = Hall2KalmanFilter.updateEstimate(analogRead(Hall_2_Pin));
+    hall_3 = Hall3KalmanFilter.updateEstimate(analogRead(Hall_3_Pin));
+    hall_4 = Hall4KalmanFilter.updateEstimate(analogRead(Hall_4_Pin));
+    hall_5 = Hall5KalmanFilter.updateEstimate(analogRead(Hall_5_Pin));
+    hall_6 = Hall6KalmanFilter.updateEstimate(analogRead(Hall_6_Pin));
+
+    init_i++;
+    delay(time_per_sample);
+  } while (init_i < 20);
 
   // Setup timer
   timer = timerBegin(0, 80, true);
@@ -275,7 +301,7 @@ void IRAM_ATTR TimerHandler0()
 float adc2v(int adc_val)
 {
   float source_voltage = 4.3;
-  int resolution = 1023;
+  int resolution = 4095;
   float voltage = (adc_val * source_voltage) / (resolution);
   return voltage;
 }
@@ -307,12 +333,12 @@ void calib_switch()
 int doBrian(bool debug_prints)
 {
   static unsigned long lastTime = micros();
-  if (micros() - lastTime > 2000000)
-  {
-    Serial.print("Brian Interval: ");
-    Serial.println(micros() - lastTime);
-    lastTime = micros();
-  }
+  // if (micros() - lastTime > 2000000)
+  // {
+  //   Serial.print("Brian Interval: ");
+  //   Serial.println(micros() - lastTime);
+  //   lastTime = micros();
+  // }
 
   // long unsigned summeded_data[samples_per_interval][6];
 
@@ -373,12 +399,13 @@ int doBrian(bool debug_prints)
         // int hall_5 = reading;
         // int hall_6 = reading;
 
-        int hall_1 = analogRead(Hall_1_Pin);
-        int hall_2 = analogRead(Hall_2_Pin);
-        int hall_3 = analogRead(Hall_3_Pin);
-        int hall_4 = analogRead(Hall_4_Pin);
-        int hall_5 = analogRead(Hall_5_Pin);
-        int hall_6 = analogRead(Hall_6_Pin);
+        int hall_1 = Hall1KalmanFilter.updateEstimate(analogRead(Hall_1_Pin));
+        int hall_2 = Hall2KalmanFilter.updateEstimate(analogRead(Hall_2_Pin));
+        int hall_3 = Hall3KalmanFilter.updateEstimate(analogRead(Hall_3_Pin));
+        int hall_4 = Hall4KalmanFilter.updateEstimate(analogRead(Hall_4_Pin));
+        int hall_5 = Hall5KalmanFilter.updateEstimate(analogRead(Hall_5_Pin));
+        int hall_6 = Hall6KalmanFilter.updateEstimate(analogRead(Hall_6_Pin));
+        // myKNN.addExample({hall_1, hall_2, hall_3, hall_4, hall_5, hall_6}, pos);
 
         // sum readings with respect to position
         averaged_data[pos][0] += hall_1 / intervals;
@@ -387,6 +414,9 @@ int doBrian(bool debug_prints)
         averaged_data[pos][3] += hall_4 / intervals;
         averaged_data[pos][4] += hall_5 / intervals;
         averaged_data[pos][5] += hall_6 / intervals;
+
+        float input[] = {adc2v(hall_1), adc2v(hall_2), adc2v(hall_3), adc2v(hall_4), adc2v(hall_5), adc2v(hall_6)};
+        myKNN.addExample(input, pos);
 
         if (debug_prints) // Print current reading
         {
@@ -412,31 +442,31 @@ int doBrian(bool debug_prints)
           Serial.print(", ");
           Serial.println(hall_6);
 
-          Serial.print("Current reading/intervals: ");
-          Serial.print(hall_1 / intervals);
-          Serial.print(", ");
-          Serial.print(hall_2 / intervals);
-          Serial.print(", ");
-          Serial.print(hall_3 / intervals);
-          Serial.print(", ");
-          Serial.print(hall_4 / intervals);
-          Serial.print(", ");
-          Serial.print(hall_5 / intervals);
-          Serial.print(", ");
-          Serial.println(hall_6 / intervals);
+          // Serial.print("Current reading/intervals: ");
+          // Serial.print(hall_1 / intervals);
+          // Serial.print(", ");
+          // Serial.print(hall_2 / intervals);
+          // Serial.print(", ");
+          // Serial.print(hall_3 / intervals);
+          // Serial.print(", ");
+          // Serial.print(hall_4 / intervals);
+          // Serial.print(", ");
+          // Serial.print(hall_5 / intervals);
+          // Serial.print(", ");
+          // Serial.println(hall_6 / intervals);
 
-          Serial.print("Current averaged_data: ");
-          Serial.print(averaged_data[pos][0]);
-          Serial.print(", ");
-          Serial.print(averaged_data[pos][1]);
-          Serial.print(", ");
-          Serial.print(averaged_data[pos][2]);
-          Serial.print(", ");
-          Serial.print(averaged_data[pos][3]);
-          Serial.print(", ");
-          Serial.print(averaged_data[pos][4]);
-          Serial.print(", ");
-          Serial.println(averaged_data[pos][5]);
+          // Serial.print("Current averaged_data: ");
+          // Serial.print(averaged_data[pos][0]);
+          // Serial.print(", ");
+          // Serial.print(averaged_data[pos][1]);
+          // Serial.print(", ");
+          // Serial.print(averaged_data[pos][2]);
+          // Serial.print(", ");
+          // Serial.print(averaged_data[pos][3]);
+          // Serial.print(", ");
+          // Serial.print(averaged_data[pos][4]);
+          // Serial.print(", ");
+          // Serial.println(averaged_data[pos][5]);
 
           delay(1);
         }
@@ -450,10 +480,12 @@ int doBrian(bool debug_prints)
       {
         Serial.println("Making KNN");
       }
-      //print average entri`es
+
+      //
       for (int b = 0; b < samples_per_interval; b++)
       {
-
+        float input[] = {adc2v(averaged_data[b][0]), adc2v(averaged_data[b][1]), adc2v(averaged_data[b][2]), adc2v(averaged_data[b][3]), adc2v(averaged_data[b][4]), adc2v(averaged_data[b][5])};
+        // print average entri`es
         if (debug_prints)
         {
           Serial.print("Average entry at position ");
@@ -461,14 +493,15 @@ int doBrian(bool debug_prints)
           Serial.print("/");
           Serial.print(samples_per_interval);
           Serial.print(": ");
-          for (int a = 0; a < 7; a++)
+          for (int a = 0; a < sensor_num; a++)
           {
-            Serial.print(averaged_data[b][a]);
+            Serial.print(input[a]);
             Serial.print(", ");
           }
           Serial.println("");
         }
-        myKNN.addExample(averaged_data[b], b);
+
+        // myKNN.addExample(averaged_data[b], b);
       }
       Serial.println("Done calibrating.");
       if (debug_prints)
@@ -483,51 +516,50 @@ int doBrian(bool debug_prints)
       digitalWrite(LED_pin, LOW);
       break;
     case motoring:
-      int hall_1 = analogRead(Hall_1_Pin);
-      int hall_2 = analogRead(Hall_2_Pin);
-      int hall_3 = analogRead(Hall_3_Pin);
-      int hall_4 = analogRead(Hall_4_Pin);
-      int hall_5 = analogRead(Hall_5_Pin);
-      int hall_6 = analogRead(Hall_6_Pin);
+      int hall_1 = Hall1KalmanFilter.updateEstimate(analogRead(Hall_1_Pin));
+      int hall_2 = Hall2KalmanFilter.updateEstimate(analogRead(Hall_2_Pin));
+      int hall_3 = Hall3KalmanFilter.updateEstimate(analogRead(Hall_3_Pin));
+      int hall_4 = Hall4KalmanFilter.updateEstimate(analogRead(Hall_4_Pin));
+      int hall_5 = Hall5KalmanFilter.updateEstimate(analogRead(Hall_5_Pin));
+      int hall_6 = Hall6KalmanFilter.updateEstimate(analogRead(Hall_6_Pin));
 
       // K Nearest Neighbor
-      int k = 5;
+      int k = 100;//TODO tune
       float input[] = {adc2v(hall_1), adc2v(hall_2), adc2v(hall_3), adc2v(hall_4), adc2v(hall_5), adc2v(hall_6)};
-      int position = myKNN.classify(input, k); // classify input with K=3
+      int position = myKNN.classify(input, k);
       float confidence = myKNN.confidence();
       float estimated_pos = pressureKalmanFilter.updateEstimate(position);
 
       if (debug_prints)
       {
-        Serial.println("Motoring. ");
+        // Serial.println("Motoring. ");
 
         Serial.print("Current reading: ");
-        Serial.print(hall_1);
+        Serial.print(input[0], 5);
         Serial.print(", ");
-        Serial.print(hall_2);
+        Serial.print(input[1], 5);
         Serial.print(", ");
-        Serial.print(hall_3);
+        Serial.print(input[2], 5);
         Serial.print(", ");
-        Serial.print(hall_4);
+        Serial.print(input[3], 5);
         Serial.print(", ");
-        Serial.print(hall_5);
+        Serial.print(input[4], 5);
         Serial.print(", ");
-        Serial.println(hall_6);
+        Serial.println(input[5], 5);
 
         Serial.print("KNN position = ");
         Serial.print(position);
 
-        // Serial.print("confidence = ");
-        // Serial.println(confidence);
+        Serial.print(" Confidence = ");
+        Serial.print(confidence);
 
         Serial.print(" KF estimated_pos = ");
         Serial.print(estimated_pos);
-
-        // delay(1000);
       }
       // TODO use confidence to set noise (q)
-      Serial.print(" Target Position:");
+      Serial.print(" Target Position: ");
       Serial.println(estimated_pos);
+      // delay(1000);
       return estimated_pos;
     }
 
