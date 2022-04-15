@@ -88,13 +88,13 @@ const int calib_button_pin = 4; // D4
 // const int potPin = 1; we both used pot pin
 int LED_pin = 22; // esp32 onboard
 
-const int Hall_1_Pin = 0;
-const int Hall_2_Pin = 0;
-const int Hall_3_Pin = A3;
-const int Hall_4_Pin = A4;
-const int Hall_5_Pin = A5;
-const int Hall_6_Pin = A6;
-const int Hall_7_Pin = A7;
+const int Hall_1_Pin = 25;
+const int Hall_2_Pin = 26;
+const int Hall_3_Pin = 27;
+const int Hall_4_Pin = 15;
+const int Hall_5_Pin = 14;
+const int Hall_6_Pin = 4;
+const int Hall_7_Pin = 33;
 
 // States
 int buttonState = 0;
@@ -111,12 +111,13 @@ State s = calibration;
 
 // Global Consts
 const int sensor_num = 6;
-const int interval_duration = 5000; // ms
+const int interval_duration = 2000; // ms
 const int intervals = 4;
 const int samples_per_interval = 125;
 const int time_per_sample = interval_duration / samples_per_interval;
 const int calib_duration = interval_duration * intervals;
 const int total_samples = intervals * samples_per_interval;
+float averaged_data[samples_per_interval][sensor_num] = {0};
 
 // GLobal Vars
 int calib_i = 0;
@@ -314,7 +315,6 @@ int doBrian(bool debug_prints)
   }
 
   // long unsigned summeded_data[samples_per_interval][6];
-  float averaged_data[samples_per_interval][sensor_num];
 
   switch (s)
   {
@@ -348,60 +348,46 @@ int doBrian(bool debug_prints)
         if (opening)
         {
           pos = calib_i % samples_per_interval;
+          digitalWrite(LED_pin, HIGH);
+          Serial.print("Calibrating at pos ");
+          Serial.print(pos);
+          Serial.println("/125 while opening");
         }
         else
-        {
+        { // count position backwards if closing
           pos = (samples_per_interval - 1) - calib_i % samples_per_interval;
+          digitalWrite(LED_pin, LOW);
+          Serial.print("Calibrating at pos ");
+          Serial.print(pos);
+          Serial.println("/125 while closing");
         }
 
         current_time = millis();
         elapsed_time = current_time - start_time;
-        int reading = 420 + calib_i % samples_per_interval;
-        int hall_1 = reading;
-        int hall_2 = reading;
-        int hall_3 = reading;
-        int hall_4 = reading;
-        int hall_5 = reading;
-        int hall_6 = reading;
 
-        // int hall_1 = analogRead(Hall_1_Pin);
-        // int hall_2 = analogRead(Hall_2_Pin);
-        // int hall_3 = analogRead(Hall_3_Pin);
-        // int hall_4 = analogRead(Hall_4_Pin);
-        // int hall_5 = analogRead(Hall_5_Pin);
-        // int hall_6 = analogRead(Hall_6_Pin);
+        // int reading = 420 + calib_i % samples_per_interval;
+        // int hall_1 = reading;
+        // int hall_2 = reading;
+        // int hall_3 = reading;
+        // int hall_4 = reading;
+        // int hall_5 = reading;
+        // int hall_6 = reading;
 
-        // current_time = start_time;
+        int hall_1 = analogRead(Hall_1_Pin);
+        int hall_2 = analogRead(Hall_2_Pin);
+        int hall_3 = analogRead(Hall_3_Pin);
+        int hall_4 = analogRead(Hall_4_Pin);
+        int hall_5 = analogRead(Hall_5_Pin);
+        int hall_6 = analogRead(Hall_6_Pin);
 
         // sum readings with respect to position
-        if (opening)
-        {
-          digitalWrite(LED_pin, HIGH);
+        averaged_data[pos][0] += hall_1 / intervals;
+        averaged_data[pos][1] += hall_2 / intervals;
+        averaged_data[pos][2] += hall_3 / intervals;
+        averaged_data[pos][3] += hall_4 / intervals;
+        averaged_data[pos][4] += hall_5 / intervals;
+        averaged_data[pos][5] += hall_6 / intervals;
 
-          averaged_data[pos][0] += hall_1 / intervals;
-          averaged_data[pos][1] += hall_2 / intervals;
-          averaged_data[pos][2] += hall_3 / intervals;
-          averaged_data[pos][3] += hall_4 / intervals;
-          averaged_data[pos][4] += hall_5 / intervals;
-          averaged_data[pos][5] += hall_6 / intervals;
-
-          // summeded_data[pos][0] += hall_1;
-          // summeded_data[pos][1] += hall_2;
-          // summeded_data[pos][2] += hall_3;
-          // summeded_data[pos][3] += hall_4;
-          // summeded_data[pos][4] += hall_5;
-          // summeded_data[pos][5] += hall_6;
-        }
-        else
-        { // count position backwards if closing
-          digitalWrite(LED_pin, LOW);
-          averaged_data[pos][0] += hall_1 / intervals;
-          averaged_data[pos][1] += hall_2 / intervals;
-          averaged_data[pos][2] += hall_3 / intervals;
-          averaged_data[pos][3] += hall_4 / intervals;
-          averaged_data[pos][4] += hall_5 / intervals;
-          averaged_data[pos][5] += hall_6 / intervals;
-        }
         if (debug_prints) // Print current reading
         {
           Serial.print("Elapsed_time: ");
@@ -426,6 +412,19 @@ int doBrian(bool debug_prints)
           Serial.print(", ");
           Serial.println(hall_6);
 
+          Serial.print("Current reading/intervals: ");
+          Serial.print(hall_1 / intervals);
+          Serial.print(", ");
+          Serial.print(hall_2 / intervals);
+          Serial.print(", ");
+          Serial.print(hall_3 / intervals);
+          Serial.print(", ");
+          Serial.print(hall_4 / intervals);
+          Serial.print(", ");
+          Serial.print(hall_5 / intervals);
+          Serial.print(", ");
+          Serial.println(hall_6 / intervals);
+
           Serial.print("Current averaged_data: ");
           Serial.print(averaged_data[pos][0]);
           Serial.print(", ");
@@ -442,14 +441,6 @@ int doBrian(bool debug_prints)
           delay(1);
         }
 
-        if (opening)
-        {
-          digitalWrite(LED_pin, HIGH);
-        }
-        else
-        {
-          digitalWrite(LED_pin, LOW);
-        }
         calib_i++;
       }
     }
@@ -458,22 +449,15 @@ int doBrian(bool debug_prints)
       if (debug_prints)
       {
         Serial.println("Making KNN");
-        delay(5000);
       }
+      //print average entri`es
       for (int b = 0; b < samples_per_interval; b++)
       {
-        // float averaged_data[samples_per_interval][sensor_num];
 
-        // averaged_data[b][0] = summeded_data[b][0] / intervals;
-        // averaged_data[b][1] = summeded_data[b][1] / intervals;
-        // averaged_data[b][2] = summeded_data[b][2] / intervals;
-        // averaged_data[b][3] = summeded_data[b][3] / intervals;
-        // averaged_data[b][4] = summeded_data[b][4] / intervals;
-        // averaged_data[b][5] = summeded_data[b][5] / intervals;
         if (debug_prints)
         {
           Serial.print("Average entry at position ");
-          Serial.print(b);
+          Serial.print(b + 1);
           Serial.print("/");
           Serial.print(samples_per_interval);
           Serial.print(": ");
@@ -483,7 +467,6 @@ int doBrian(bool debug_prints)
             Serial.print(", ");
           }
           Serial.println("");
-          // delay(1000);
         }
         myKNN.addExample(averaged_data[b], b);
       }
@@ -496,11 +479,10 @@ int doBrian(bool debug_prints)
         delay(1000);
       }
       s = motoring; // TODO make motoring
+      Serial.print("Calibrated, now returning estimated pos. ");
       digitalWrite(LED_pin, LOW);
       break;
     case motoring:
-      Serial.println("Motoring.");
-
       int hall_1 = analogRead(Hall_1_Pin);
       int hall_2 = analogRead(Hall_2_Pin);
       int hall_3 = analogRead(Hall_3_Pin);
@@ -513,8 +495,12 @@ int doBrian(bool debug_prints)
       float input[] = {adc2v(hall_1), adc2v(hall_2), adc2v(hall_3), adc2v(hall_4), adc2v(hall_5), adc2v(hall_6)};
       int position = myKNN.classify(input, k); // classify input with K=3
       float confidence = myKNN.confidence();
+      float estimated_pos = pressureKalmanFilter.updateEstimate(position);
+
       if (debug_prints)
       {
+        Serial.println("Motoring. ");
+
         Serial.print("Current reading: ");
         Serial.print(hall_1);
         Serial.print(", ");
@@ -528,14 +514,20 @@ int doBrian(bool debug_prints)
         Serial.print(", ");
         Serial.println(hall_6);
 
-        Serial.print("position = ");
-        Serial.println(position);
+        Serial.print("KNN position = ");
+        Serial.print(position);
 
         // Serial.print("confidence = ");
         // Serial.println(confidence);
+
+        Serial.print(" KF estimated_pos = ");
+        Serial.print(estimated_pos);
+
+        // delay(1000);
       }
       // TODO use confidence to set noise (q)
-      float estimated_pos = pressureKalmanFilter.updateEstimate(position);
+      Serial.print(" Target Position:");
+      Serial.println(estimated_pos);
       return estimated_pos;
     }
 
@@ -546,4 +538,5 @@ int doBrian(bool debug_prints)
     }
     break;
   }
+  return 0;
 }
