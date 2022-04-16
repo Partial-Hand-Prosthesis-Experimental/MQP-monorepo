@@ -30,7 +30,7 @@
 BLEServer *pServer = NULL;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
-uint8_t txValue = 0;
+long lastNotifyTime = 0;
 
 int velo0pin = 15;
 int velo1pin = 4;
@@ -71,6 +71,19 @@ BLEProp test3(SERVICE_UUID_TEST3, CHARACTERISTIC_UUID_TEST3, BLECharacteristic::
 BLEProp velo1(SERVICE_UUID_VELO1, CHARACTERISTIC_UUID_VELO1, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
 BLEProp velo2(SERVICE_UUID_VELO2, CHARACTERISTIC_UUID_VELO2, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
 BLEProp vibConf(SERVICE_UUID_VIBCONF, CHARACTERISTIC_UUID_VIBCONF, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 20);
+
+class MyServerCallbacks : public BLEServerCallbacks
+{
+  void onConnect(BLEServer *pServer)
+  {
+    deviceConnected = true;
+  };
+
+  void onDisconnect(BLEServer *pServer)
+  {
+    deviceConnected = false;
+  }
+};
 
 Preferences preferences;
 
@@ -154,6 +167,7 @@ void setup()
   BLEDevice::init("Prosthesis");
   // BLEDevice::setMTU(64); // Wish this worked but I don't think it does on windows
   pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
 
   test1.attach(pServer);
   test3.attach(pServer);
@@ -169,7 +183,7 @@ void setup()
 
   vibConf.setBytes((uint8_t *)&vibConfStart, 8);
 
-  test1.setValue(100.0);
+  test1.setValue(1.0);
   test3.setValue(0.0);
   velo1.setValue(0.0);
   velo2.setValue(0.0);
@@ -191,28 +205,35 @@ void setup()
   // Kalman Filter Setup
 
   // Setup timer
-  timer = timerBegin(0, 80, true);
+  timer = timerBegin(1, 80, true);
   timerAttachInterrupt(timer, &TimerHandler0, true);
   timerAlarmWrite(timer, 500, true);
   timerAlarmEnable(timer);
 }
 
+int lastLoop = 0;
+
 void loop()
 {
+  lastLoop = micros();
+  if(micros() > lastLoop + 500)
+  {
+    motor.position(map(test3.getFloat()*65535, 0, 65535, 250, 3900));
+  }
   if (deviceConnected)
   {
-    float time = (float)millis();
-    // Serial.println(time);
-    motor.position(test3.getFloat());
-    test1.setValue(potReading);
-    test1.notify();
-    velo1.setValue((float)65.7 * powf(analogReadMilliVolts(velo0pin) / 1000.0, -1.35));
-    velo1.notify();
-    velo2.setValue((float)65.7 * powf(analogReadMilliVolts(velo1pin) / 1000.0, -1.35));
-    velo2.notify();
-    test3.notify();
-    vibConf.notify();
-    delay(10); // bluetooth stack will go into congestion if too many packets are sent
+    if(lastNotifyTime + 10 < millis())
+    {
+      test1.setValue(currentReading/4096.0);
+      test1.notify();
+      velo1.setValue((float)65.7 * powf(analogReadMilliVolts(velo0pin) / 1000.0, -1.35));
+      velo1.notify();
+      velo2.setValue((float)65.7 * powf(analogReadMilliVolts(velo1pin) / 1000.0, -1.35));
+      velo2.notify();
+      test3.notify();
+      vibConf.notify();
+      lastNotifyTime = millis();
+    }
   }
 
   // disconnecting
@@ -259,15 +280,17 @@ void loop()
     }
   }
 
-  int pos = doBrian(true);
+  int pos = doBrian(false);
 }
 
 // Currently Runs at 20khz, see #define TIMER0_INTERVAL_US        50
 void IRAM_ATTR TimerHandler0()
 {
   portENTER_CRITICAL_ISR(&timerMux);
-  potReading = analogRead(potPin);
   currentReading = analogRead(currentPin);
+  // Since jank electronics pushes up the gnd for the motor system, the reading 
+  // would naturally fall by the voltage dropped by the current sense resistor
+  potReading = analogRead(potPin);//  + currentReading; 
   portEXIT_CRITICAL_ISR(&timerMux);
 }
 
