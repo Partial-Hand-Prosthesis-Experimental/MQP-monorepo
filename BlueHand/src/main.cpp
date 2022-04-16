@@ -24,6 +24,7 @@
 #include <Arduino_KNN.h>
 #include <GMM.h>
 #include <Wire.h>
+#include <TinyPICO.h>
 #include "Motor.h"
 #include "Haptics.h"
 #include "Preferences.h"
@@ -63,6 +64,7 @@ portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 hw_timer_t *timer = NULL;
 
 Motor motor(25, 33, &sharedPotReading, &sharedCurrentReading);
+TinyPICO tp = TinyPICO();
 
 // See the following for generating UUIDs:
 // https://www.uuidgenerator.net/
@@ -155,7 +157,7 @@ const int buttonPin = 32;
 const int buttonPin2 = 34;
 const int calib_button_pin = 35; // D4
 // const int potPin = 1; we both used pot pin
-int LED_pin = 22; // esp32 onboard
+int LED_pin = 2; // esp32 onboard
 
 const int Hall_1_Pin = 36; // Changed by drew
 const int Hall_2_Pin = 26;
@@ -183,8 +185,8 @@ State vs_s = standby;
 
 // Global Consts
 const int sensor_num = 6;
-const int interval_duration = 2000;                                        // ms
-const int intervals = 8;                                                   // 13 is max memorywise
+const int interval_duration = 6000;                                        // ms
+const int intervals = 10;                                                  // 13 is max memorywise
 const int samples_per_interval = 125;                                      // 110mm arc len on thumb tip / 1mm percision goal
 const int hall_time_per_sample = interval_duration / samples_per_interval; // 2000/110 = 18.2s
 const int calib_duration = interval_duration * intervals;
@@ -203,12 +205,12 @@ int hall_6 = 0;
 
 // Timers
 // TODO Refactor these with drews timer
-unsigned long vs_start_time;
-unsigned long hall_start_time;
-unsigned long hall_elapsed_time;
-unsigned long elapsed_time;
-unsigned long vs_old_start_time;
-unsigned long hall_old_start_time;
+long vs_start_time;
+long hall_sample_time;
+long hall_elapsed_time;
+long elapsed_time;
+long vs_old_start_time;
+long hall_old_start_time;
 
 // Kalman Filter
 float pos_noise = 0.01;
@@ -418,12 +420,11 @@ float adc2v(int adc_val)
   return voltage;
 }
 
-
 void hall_calib_switch()
 {
   Serial.println("Switching to hall sensor calibration.");
   hall_s = calibration;
-  hall_start_time = millis();
+  hall_sample_time = millis();
   hall_calib_i = 0;
 
   digitalWrite(LED_pin, HIGH);
@@ -461,7 +462,7 @@ float hallPos(bool debug_prints)
     if (hall_calib_i < (total_hall_samples))
     {
       // delay sampling to achive desired rate
-      if ((millis() - hall_start_time) < (hall_elapsed_time + hall_time_per_sample))
+      if ((millis() - hall_old_start_time) < (hall_time_per_sample))
       {
         if (debug_prints)
         {
@@ -470,6 +471,18 @@ float hallPos(bool debug_prints)
       }
       else
       {
+        hall_sample_time = hRead();
+        if (debug_prints)
+        {
+          Serial.print(" actual interval: ");
+          Serial.print(hall_sample_time);
+          Serial.print(" actual interval: ");
+          Serial.print(hall_sample_time - hall_old_start_time);
+          Serial.print(" actual interval: ");
+          Serial.print((hall_old_start_time));
+          Serial.print(" desired interval: ");
+          Serial.println(hall_time_per_sample);
+        }
         bool opening = (int)floor((hall_calib_i) / samples_per_interval) % 2 == 0;
         int pos = 0;
         if (opening)
@@ -493,11 +506,9 @@ float hallPos(bool debug_prints)
           Serial.println(" while closing");
         }
 
-        update_hall_elapsed_time();
-
-        hRead();
         float input[] = {adc2v(hall_1), adc2v(hall_2), adc2v(hall_3), adc2v(hall_4), adc2v(hall_5), adc2v(hall_6)};
         myKNN.addExample(input, pos);
+        hall_old_start_time = hall_sample_time;
 
         if (debug_prints) // Print current reading
         {
@@ -527,7 +538,6 @@ float hallPos(bool debug_prints)
         }
 
         hall_calib_i++;
-        vs_start_time = hall_start_time;
       }
     }
     else
@@ -663,10 +673,11 @@ void velostatHandler(bool debug_prints, bool diagonal)
     Serial.print(vs_calib_i);
     Serial.print("/");
     Serial.println(vs_sample_num);
+
     if (vs_calib_i < (vs_sample_num))
     {
       // delay sampling to achive desired rate
-      if ((millis() - vs_old_start_time) < (elapsed_time + vs_time_per_sample))
+      if ((millis() - (vs_old_start_time)) < (vs_time_per_sample))
       {
         if (debug_prints)
         {
@@ -676,15 +687,14 @@ void velostatHandler(bool debug_prints, bool diagonal)
       else
       { // undelayed
 
-        static long vs_sample_time = vsRead();
+        vs_start_time = vsRead();
 
         if (debug_prints)
         {
-          Serial.print(" actual interval");
-          Serial.print(vs_sample_time - vs_old_start_time);
-          Serial.print(" desired interval ");
-          Serial.print(vs_time_per_sample);
-          Serial.println("----");
+          Serial.print(" actual interval: ");
+          Serial.print(vs_start_time - (vs_old_start_time));
+          Serial.print(" desired interval: ");
+          Serial.println(vs_time_per_sample);
         }
 
         for (int i = 0; i < vs_sen_num; i++)
@@ -780,24 +790,26 @@ bool get_hall_calib_button()
 
 long vsRead()
 {
-  static float lastVelo[5] = {0, 0, 0, 0, 0};
+  long time = update_elapsed_time();
+  float lastVelo;
   for (int i = 0; i < sizeof(veloAddrs) / sizeof(int); i++)
   {
-    lastVelo[i] = veloReadings[i][0];
-    veloReadings[i][0] = vs_kalmans[i].updateEstimate((float)65.7 * powf(muxedReadVolts(0, i), -1.35)); //V to g
-    veloReadings[i][1] = (float)(veloReadings[i][0] - veloReadings[i][1]);
+    lastVelo = veloReadings[i][0];
+    veloReadings[i][0] = vs_kalmans[i].updateEstimate((float)65.7 * powf(muxedReadVolts(0, i), -1.35)); // V to g
+    veloReadings[i][1] = (float)(veloReadings[i][0] - lastVelo);
   }
-  return update_elapsed_time();
+  return time;
 }
 long hRead()
 {
+  long time = update_hall_elapsed_time();
   hall_1 = Hall1KalmanFilter.updateEstimate(analogRead(Hall_1_Pin));
   hall_2 = Hall2KalmanFilter.updateEstimate(analogRead(Hall_2_Pin));
   hall_3 = Hall3KalmanFilter.updateEstimate(analogRead(Hall_3_Pin));
   hall_4 = Hall4KalmanFilter.updateEstimate(analogRead(Hall_4_Pin));
   hall_5 = Hall5KalmanFilter.updateEstimate(analogRead(Hall_5_Pin));
   hall_6 = Hall6KalmanFilter.updateEstimate(analogRead(Hall_6_Pin));
-  return update_elapsed_time();
+  return time;
 }
 
 long update_elapsed_time()
@@ -809,7 +821,7 @@ long update_elapsed_time()
 long update_hall_elapsed_time()
 {
   long current_time = millis();
-  hall_elapsed_time = current_time - hall_start_time;
+  hall_elapsed_time = current_time - hall_sample_time;
   return current_time;
 }
 
