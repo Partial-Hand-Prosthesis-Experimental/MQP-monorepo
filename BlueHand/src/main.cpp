@@ -32,8 +32,6 @@ bool deviceConnected = false;
 bool oldDeviceConnected = false;
 long lastNotifyTime = 0;
 
-int velo0pin = 15;
-int velo1pin = 4;
 
 int potPin = 26;
 int currentPin = 27;
@@ -48,7 +46,7 @@ portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 hw_timer_t *timer = NULL;
 
 Motor motor(25, 33, &potReading, &currentReading);
-Haptics haptics(2);
+
 
 // See the following for generating UUIDs:
 // https://www.uuidgenerator.net/
@@ -91,6 +89,30 @@ Preferences preferences;
 int doBrian(bool debug_prints);
 void calib_switch();
 float adc2v(int adc_val);
+
+void velostatHandler();
+long vsRead();
+
+// Velostat Variables
+Haptics haptics(2);
+
+// state enum
+float veloReadings[5][2] = {
+  {0, 0},
+  {0, 0},
+  {0, 0},
+  {0, 0},
+  {0, 0}
+};
+
+int outpustates[5][1] = {
+  {0},
+  {0},
+  {0},
+  {0},
+  {0}
+};
+
 
 // Brian globals
 // TODO Fix all of these. All are from arduino nano
