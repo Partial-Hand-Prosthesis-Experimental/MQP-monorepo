@@ -22,7 +22,7 @@
 #include <BLEProp.h>
 #include <SimpleKalmanFilter.h>
 #include <Arduino_KNN.h>
-#include <GMM.h>
+#include <kMeans.h>
 #include <Wire.h>
 #include "Motor.h"
 #include "Haptics.h"
@@ -141,7 +141,7 @@ uint8_t vibeSettings[vs_sen_num][3];
 
 // TODO increase sample duration
 const int vs_time_per_sample = 20;                                                  // time per vs sample
-const int vs_calib_duration = 500;                                                 // time for vs calibration period. in millisec
+const int vs_calib_duration = 500;                                                  // time for vs calibration period. in millisec
 const int total_vs_samples = (vs_calib_duration / vs_time_per_sample) * vs_sen_num; // 4000/40 * 5 =500
 
 float vs_data[total_vs_samples][2] = {0}; //[data sample len][force, force']--------------------------------make smaller to fix memory issues
@@ -202,6 +202,7 @@ int hall_6 = 0;
 // TODO Refactor these with drews timer
 unsigned long start_time;
 unsigned long elapsed_time;
+long vs_old_sample_time;
 
 // Kalman Filter
 float pos_noise = 0.01;
@@ -217,8 +218,8 @@ SimpleKalmanFilter Hall6KalmanFilter(1, 1, noise);
 KNNClassifier myKNN(sensor_num); // same as sensor_num
 // GMM Clasifier
 int vibrohaptic_response_num = 3;
-Gaussian_Mixture_Model myGMM_diagonal("diagonal", total_vs_samples, vibrohaptic_response_num);
-Gaussian_Mixture_Model myGMM_other("other", total_vs_samples, vibrohaptic_response_num);
+KMeans myGMM_diagonal("diagonal", 2, vibrohaptic_response_num);
+KMeans myGMM_other("other", 2, vibrohaptic_response_num);
 
 void setup()
 {
@@ -377,12 +378,12 @@ void loop()
   //   //   haptics.drv->go();
   //   // }
   // }
+  velostatHandler(true, false);
 
   int pos = hallPos(false);
   // Serial.print("Position from Hall: ");
   // Serial.println(pos);
 
-  velostatHandler(true, false);
   // delay(1);
 }
 
@@ -653,7 +654,7 @@ void velostatHandler(bool debug_prints, bool diagonal)
       }
       else
       { // undelayed
-        
+
         static long vs_sample_time = vsRead();
 
         if (debug_prints)
@@ -663,15 +664,15 @@ void velostatHandler(bool debug_prints, bool diagonal)
           Serial.print("/");
           Serial.print(total_vs_samples);
           Serial.print(" actual interval");
-          Serial.print(total_vs_samples);
+          Serial.print(samples_per_interval - vs_old_sample_time);
 
           Serial.println("----");
         }
 
         for (int i = 0; i < vs_sen_num; i++)
         {
-          vs_data[(vs_calib_i * 5) + i][0] = veloReadings[i][0];
-          vs_data[(vs_calib_i * 5) + i][1] = veloReadings[i][1];
+          vs_data[(vs_calib_i) + i][0] = veloReadings[i][0];
+          vs_data[(vs_calib_i) + i][1] = veloReadings[i][1];
           if (debug_prints)
           {
             Serial.print(veloReadings[i][0]);
@@ -680,6 +681,7 @@ void velostatHandler(bool debug_prints, bool diagonal)
           }
         }
         vs_calib_i++;
+        vs_old_sample_time = vs_sample_time;
       }
     }
     else
@@ -688,11 +690,11 @@ void velostatHandler(bool debug_prints, bool diagonal)
 
       if (diagonal)
       {
-        myGMM_diagonal.Initialize((total_vs_samples * vs_sen_num), (double **)vs_data);
+        myGMM_diagonal.Initialize((total_vs_samples), (double **)vs_data);
       }
       else
       {
-        myGMM_other.Initialize((total_vs_samples * vs_sen_num), (double **)vs_data);
+        myGMM_other.Initialize((total_vs_samples), (double **)vs_data);
       }
 
       if (debug_prints)
