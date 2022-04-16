@@ -77,7 +77,15 @@ Motor motor(25, 33, &sharedPotReading, &sharedCurrentReading);
 
 BLEProp test1(SERVICE_UUID_TEST1, CHARACTERISTIC_UUID_TEST1, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
 BLEProp test3(SERVICE_UUID_TEST3, CHARACTERISTIC_UUID_TEST3, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
+<<<<<<< HEAD
 BLEProp velo(SERVICE_UUID_VELO, CHARACTERISTIC_UUID_VELO, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4*20);
+=======
+<<<<<<< HEAD
+BLEProp velo1(SERVICE_UUID_VELO1, CHARACTERISTIC_UUID_VELO1, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4 * 20);
+=======
+BLEProp velo(SERVICE_UUID_VELO, CHARACTERISTIC_UUID_VELO, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4*20);
+>>>>>>> PID with some filtering
+>>>>>>> PID with some filtering
 BLEProp velo2(SERVICE_UUID_VELO2, CHARACTERISTIC_UUID_VELO2, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
 BLEProp vibConf(SERVICE_UUID_VIBCONF, CHARACTERISTIC_UUID_VIBCONF, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, sizeof(uint8_t) * 15);
 
@@ -248,8 +256,18 @@ void setup()
   pServer->getAdvertising()->start();
 
   test1.setValue(1.0);
+<<<<<<< HEAD
   test3.setValue(0.5);
   velo.setBytes((uint8_t*)veloReadings, 4 * 20);
+=======
+<<<<<<< HEAD
+  test3.setValue(0.0);
+  velo1.setBytes((uint8_t *)veloReadings, 4 * 20);
+=======
+  test3.setValue(0.5);
+  velo.setBytes((uint8_t*)veloReadings, 4 * 20);
+>>>>>>> PID with some filtering
+>>>>>>> PID with some filtering
   velo2.setValue(0.0);
   vibConf.setBytes((uint8_t *)vibeSettings, sizeof(vibeSettings));
 
