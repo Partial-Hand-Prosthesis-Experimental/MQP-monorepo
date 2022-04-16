@@ -22,6 +22,7 @@
 #include <BLEProp.h>
 #include <SimpleKalmanFilter.h>
 #include <Arduino_KNN.h>
+#include <GMM.h>
 #include <Wire.h>
 #include "Motor.h"
 #include "Haptics.h"
@@ -74,9 +75,9 @@ Motor motor(25, 33, &potReading, &currentReading);
 
 BLEProp test1(SERVICE_UUID_TEST1, CHARACTERISTIC_UUID_TEST1, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
 BLEProp test3(SERVICE_UUID_TEST3, CHARACTERISTIC_UUID_TEST3, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
-BLEProp velo1(SERVICE_UUID_VELO1, CHARACTERISTIC_UUID_VELO1, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4*20);
+BLEProp velo1(SERVICE_UUID_VELO1, CHARACTERISTIC_UUID_VELO1, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4 * 20);
 BLEProp velo2(SERVICE_UUID_VELO2, CHARACTERISTIC_UUID_VELO2, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
-BLEProp vibConf(SERVICE_UUID_VIBCONF, CHARACTERISTIC_UUID_VIBCONF, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, sizeof(uint8_t)*15);
+BLEProp vibConf(SERVICE_UUID_VIBCONF, CHARACTERISTIC_UUID_VIBCONF, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, sizeof(uint8_t) * 15);
 
 class MyServerCallbacks : public BLEServerCallbacks
 {
@@ -104,6 +105,7 @@ long hRead();
 int muxedRead(int mux, int pin);
 float muxedReadVolts(int mux, int pin);
 
+void update_elapsed_time();
 bool get_vs_calib_button();
 bool get_hall_calib_button();
 
@@ -124,7 +126,7 @@ int outputStates[5][1] = {
     {0},
     {0},
     {0}};
-uint8_t vibeSettings [5][3];
+uint8_t vibeSettings[5][3];
 
 // -------------------------------Brian globals
 // TODO Fix all of these. All are from arduino nano
@@ -169,11 +171,12 @@ const int total_samples = intervals * samples_per_interval;
 
 // float averaged_data[samples_per_interval][sensor_num] = {0};
 
-// time per vs sample
-const int vs_time_per_sample = 10;
-// time for vs calibration period
-const int vs_calib_duration = 60000; // 1 minute (?)
-const int total_vs_samples = vs_calib_duration / vs_time_per_sample;
+// TODO increase sample duration
+const int vs_time_per_sample = 15;                                   // time per vs sample
+const int vs_calib_duration = 10000;                                 // time for vs calibration period. 10 sec
+const int total_vs_samples = vs_calib_duration / vs_time_per_sample; // 10000/15 =666
+
+float vs_data[total_vs_samples][2] = {0};
 
 // GLobal Vars
 int hall_calib_i = 0;
@@ -190,7 +193,6 @@ int hall_6 = 0;
 // TODO Refactor these with drews timer
 unsigned long start_time;
 unsigned long last_time;
-unsigned long current_time;
 unsigned long elapsed_time;
 
 // Kalman Filter
@@ -205,23 +207,26 @@ SimpleKalmanFilter Hall5KalmanFilter(1, 1, noise);
 SimpleKalmanFilter Hall6KalmanFilter(1, 1, noise);
 // KNN Clasifier
 KNNClassifier myKNN(sensor_num); // same as sensor_num
+// GMM Clasifier
+int vibrohaptic_response_num = 3;
+Gaussian_Mixture_Model myGMM_diagonal("diagonal", 2, vibrohaptic_response_num);
+Gaussian_Mixture_Model myGMM_other("other", 2, vibrohaptic_response_num);
 
 void setup()
 {
   Serial.begin(115200);
   preferences.begin("vibro", false);
-  if(!preferences.isKey("vibConf")) {
+  if (!preferences.isKey("vibConf"))
+  {
     uint8_t initialConfig[5][3] = {
-      {0, 47, 51},
-      {0, 47, 51},
-      {0, 47, 51},
-      {0, 47, 51},
-      {0, 47, 51}
-    };
+        {0, 47, 51},
+        {0, 47, 51},
+        {0, 47, 51},
+        {0, 47, 51},
+        {0, 47, 51}};
     preferences.putBytes("vibConf", initialConfig, sizeof(initialConfig));
   }
   preferences.getBytes("vibConf", vibeSettings, sizeof(vibeSettings));
-  
 
   // Create the BLE Device
   BLEDevice::init("Prosthesis");
@@ -243,9 +248,9 @@ void setup()
 
   test1.setValue(1.0);
   test3.setValue(0.0);
-  velo1.setBytes((uint8_t*)veloReadings, 4 * 20);
+  velo1.setBytes((uint8_t *)veloReadings, 4 * 20);
   velo2.setValue(0.0);
-  vibConf.setBytes((uint8_t*)vibeSettings, sizeof(vibeSettings));
+  vibConf.setBytes((uint8_t *)vibeSettings, sizeof(vibeSettings));
 
   vibConf.notify();
   velo1.notify();
@@ -289,7 +294,8 @@ void loop()
 {
   if (micros() > lastLoop + 500)
   {
-    motor.position(map(test3.getFloat() * 65535, 0, 65535, 500, 3900));
+    long int long_pos = map((long int)(test3.getFloat() * 65535), (long int)0, (long int)65535, (long int)500, (long int)3900);
+    motor.position((float)long_pos);
   }
   if (deviceConnected)
   {
@@ -297,13 +303,13 @@ void loop()
     {
       test1.setValue(currentReading / 4096.0);
       test1.notify();
-      velo1.setBytes((uint8_t*)veloReadings, 4 * 20);
+      velo1.setBytes((uint8_t *)veloReadings, 4 * 20);
       velo1.notify();
       // velo2.setValue((float)65.7 * powf(analogReadMilliVolts(velo1pin) / 1000.0, -1.35));
       velo2.notify();
       test3.notify();
       preferences.putBytes("vibConf", vibConf.getData(), vibConf.byteCount);
-      vibConf.setBytes((uint8_t*)vibeSettings, sizeof(vibeSettings));
+      vibConf.setBytes((uint8_t *)vibeSettings, sizeof(vibeSettings));
       vibConf.notify();
       lastNotifyTime = millis();
     }
@@ -365,7 +371,7 @@ void IRAM_ATTR TimerHandler0()
   currentReading = analogRead(currentPin);
   // Since jank electronics pushes up the gnd for the motor system, the reading
   // would naturally fall by the voltage dropped by the current sense resistor
-  potReading = analogRead(potPin)  + currentReading;
+  potReading = analogRead(potPin) + currentReading;
   portEXIT_CRITICAL_ISR(&timerMux);
 }
 
@@ -456,8 +462,7 @@ float hallPos(bool debug_prints)
           Serial.println(" while closing");
         }
 
-        current_time = millis();
-        elapsed_time = current_time - start_time;
+        update_elapsed_time();
 
         hRead();
         float input[] = {adc2v(hall_1), adc2v(hall_2), adc2v(hall_3), adc2v(hall_4), adc2v(hall_5), adc2v(hall_6)};
@@ -570,7 +575,7 @@ float hallPos(bool debug_prints)
 
 void vs_calib_switch()
 {
-  Serial.println("Switching to hall sensor calibration.");
+  Serial.println("Switching to velostat sensor calibration.");
   vs_s = calibration;
   start_time = millis();
   last_time = millis();
@@ -627,7 +632,7 @@ void velostatHandler(bool debug_prints)
       else
       { // undelayed
         vsRead();
-        
+
         vs_calib_i++;
       }
     }
@@ -670,8 +675,9 @@ bool get_hall_calib_button()
 long vsread()
 {
 
-  for(int i = 0; i < sizeof(veloAddrs)/sizeof(int); i++) {
-    veloReadings[i][1] = (float)(veloReadings[i][0] -  veloReadings[i][1]);
+  for (int i = 0; i < sizeof(veloAddrs) / sizeof(int); i++)
+  {
+    veloReadings[i][1] = (float)(veloReadings[i][0] - veloReadings[i][1]);
     veloReadings[i][0] = (float)65.7 * powf(muxedReadVolts(0, i), -1.35);
   }
   return micros();
@@ -687,6 +693,12 @@ long hRead()
   hall_6 = Hall6KalmanFilter.updateEstimate(analogRead(Hall_6_Pin));
   long time = millis();
   return time;
+}
+
+void update_elapsed_time()
+{
+  unsigned long current_time = millis();
+  elapsed_time = current_time - start_time;
 }
 
 int muxedRead(int mux, int pin)
@@ -711,21 +723,24 @@ int muxedRead(int mux, int pin)
   return val;
 }
 
-float muxedReadVolts(int mux, int pin) {
+float muxedReadVolts(int mux, int pin)
+{
   int val;
   vTaskEnterCritical(&timerMux);
-  if(mux == 0) {
+  if (mux == 0)
+  {
     digitalWrite(mux0Pin2, pin >> 2 & 1);
     digitalWrite(mux0Pin1, pin >> 1 & 1);
     digitalWrite(mux0Pin0, pin & 1);
     val = analogReadMilliVolts(mux0readPin);
   }
-  else if(mux == 1){
+  else if (mux == 1)
+  {
     digitalWrite(mux0Pin2, pin >> 2 & 1);
     digitalWrite(mux0Pin1, pin >> 1 & 1);
     digitalWrite(mux0Pin0, pin & 1);
     val = analogReadMilliVolts(mux1readPin);
   }
   vTaskExitCritical(&timerMux);
-  return val/1000.0;
+  return val / 1000.0;
 }
