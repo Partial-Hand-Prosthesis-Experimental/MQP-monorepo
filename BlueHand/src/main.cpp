@@ -28,6 +28,11 @@
 #include "Haptics.h"
 #include "Preferences.h"
 
+// Added to try to fix map issue
+// #include <iostream>
+// #include <iterator>
+// #include <map>
+
 BLEServer *pServer = NULL;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
@@ -77,15 +82,9 @@ Motor motor(25, 33, &sharedPotReading, &sharedCurrentReading);
 
 BLEProp test1(SERVICE_UUID_TEST1, CHARACTERISTIC_UUID_TEST1, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
 BLEProp test3(SERVICE_UUID_TEST3, CHARACTERISTIC_UUID_TEST3, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
-<<<<<<< HEAD
+
 BLEProp velo(SERVICE_UUID_VELO, CHARACTERISTIC_UUID_VELO, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4*20);
-=======
-<<<<<<< HEAD
-BLEProp velo1(SERVICE_UUID_VELO1, CHARACTERISTIC_UUID_VELO1, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4 * 20);
-=======
-BLEProp velo(SERVICE_UUID_VELO, CHARACTERISTIC_UUID_VELO, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4*20);
->>>>>>> PID with some filtering
->>>>>>> PID with some filtering
+
 BLEProp velo2(SERVICE_UUID_VELO2, CHARACTERISTIC_UUID_VELO2, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
 BLEProp vibConf(SERVICE_UUID_VIBCONF, CHARACTERISTIC_UUID_VIBCONF, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, sizeof(uint8_t) * 15);
 
@@ -106,7 +105,7 @@ Preferences preferences;
 
 // Headers
 float hallPos(bool debug_prints);
-void velostatHandler(bool debug_prints);
+void velostatHandler(bool debug_prints, bool diagonal);
 
 void calib_switch();
 float adc2v(int adc_val);
@@ -140,11 +139,12 @@ int outputStates[vs_sen_num][1] = {
 uint8_t vibeSettings[vs_sen_num][3];
 
 // TODO increase sample duration
-const int vs_time_per_sample = 15;                                   // time per vs sample
-const int vs_calib_duration = 10000;                                 // time for vs calibration period. 10 sec
+const int vs_time_per_sample = 30;                                   // time per vs sample
+const int vs_calib_duration = 7000;                                  // time for vs calibration period. in millisec
 const int total_vs_samples = vs_calib_duration / vs_time_per_sample; // 10000/15 =666
 
-float vs_data[total_vs_samples * vs_sen_num][2] = {0}; //[data sample len][force, force']
+float vs_data[total_vs_samples * vs_sen_num][2] = {0}; //[data sample len][force, force']--------------------------------make smaller to fix memory issues
+
 
 // -------------------------------Brian globals
 // TODO Fix all of these. All are from arduino nano
@@ -185,7 +185,8 @@ const int intervals = 8;            // 13 is max memorywise
 const int samples_per_interval = 125;
 const int hall_time_per_sample = interval_duration / samples_per_interval;
 const int calib_duration = interval_duration * intervals;
-const int total_samples = intervals * samples_per_interval;
+const int total_samples = intervals * samples_per_interval; // --------------------------------make smaller to fix memory issues
+
 
 // GLobal Vars
 int hall_calib_i = 0;
@@ -256,18 +257,10 @@ void setup()
   pServer->getAdvertising()->start();
 
   test1.setValue(1.0);
-<<<<<<< HEAD
+
   test3.setValue(0.5);
   velo.setBytes((uint8_t*)veloReadings, 4 * 20);
-=======
-<<<<<<< HEAD
-  test3.setValue(0.0);
-  velo1.setBytes((uint8_t *)veloReadings, 4 * 20);
-=======
-  test3.setValue(0.5);
-  velo.setBytes((uint8_t*)veloReadings, 4 * 20);
->>>>>>> PID with some filtering
->>>>>>> PID with some filtering
+
   velo2.setValue(0.0);
   vibConf.setBytes((uint8_t *)vibeSettings, sizeof(vibeSettings));
 
@@ -330,6 +323,7 @@ void loop()
     {
       test1.setValue(sharedPotReading / 4096.0);
       test1.notify();
+
       velo.setBytes((uint8_t*)veloReadings, 4 * 20);
       velo.notify();
       // velo2.setValue((float)65.7 * powf(analogReadMilliVolts(velopin) / 1000.0, -1.35));
@@ -623,7 +617,7 @@ void vs_calib_switch()
   delay(interval_duration * .45);
 }
 
-void velostatHandler(bool debug_prints)
+void velostatHandler(bool debug_prints, bool diagonal)
 {
   switch (hall_s)
   {
@@ -660,32 +654,70 @@ void velostatHandler(bool debug_prints)
         vsRead();
         for (int i = 0; i < vs_sen_num; i++)
         {
-          vs_data[vs_calib_i + i][0] = 0;
-          vs_data[vs_calib_i + i][1] = 0;
+          vs_data[(vs_calib_i * 5) + i][0] = veloReadings[i][0];
+          vs_data[(vs_calib_i * 5) + i][1] = veloReadings[i][1];
+
         }
         vs_calib_i++;
       }
     }
     else
     {
-      Serial.print("Calibrated. ");
+      Serial.println("Calibrated, initialising GMMs...");
       if (debug_prints)
       {
-        Serial.print("Now updating vs globals. ");
+        update_elapsed_time();
       }
-      Serial.println("");
+      myGMM_diagonal.Initialize((total_vs_samples * vs_sen_num), (double **)vs_data);
+      myGMM_other.Initialize((total_vs_samples * vs_sen_num), (double **)vs_data);
+
+      if (debug_prints)
+      {
+        long gmm_end = millis();
+        Serial.print("Gmms trained over ");
+        Serial.print((gmm_end - elapsed_time) / 1000);
+        Serial.println("s. ");
+
+        Serial.println("Now updating vs globals. ");
+      }
 
       hall_s = working; // TODO make motoring
       digitalWrite(LED_pin, LOW);
       break;
     }
   case working:
-
+    vsRead();
+    double certainty[vs_sen_num][2];
+    for (int i = 0; i < vs_sen_num; i++)
+    {
+      float* d = veloReadings[i];
+      int classification_diagonal = myGMM_diagonal.Classify((double *)d);
+      int classification_other = myGMM_other.Classify((double *)d);
+      if (debug_prints)
+      {
+        double l_d = myGMM_diagonal.Calculate_Likelihood((double *)d);
+        double l_o = myGMM_other.Calculate_Likelihood((double *)d);
+        Serial.print("Likliehoood of prediction for diagonal: ");
+        Serial.println(l_d);
+        Serial.print("Likliehoood of prediction for other: ");
+        Serial.println(l_o);
+      }
+      if (diagonal)
+      {
+        outputStates[i][0] = classification_diagonal;
+      }
+      else
+      {
+        outputStates[i][0] = classification_other;
+      }
+    }
     calib_button_push = get_vs_calib_button();
+
     if (calib_button_push)
     {
       calib_switch();
     }
+
     break;
   }
 }
