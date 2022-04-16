@@ -116,6 +116,7 @@ int muxedRead(int mux, int pin);
 float muxedReadVolts(int mux, int pin);
 
 long update_elapsed_time();
+long update_hall_elapsed_time();
 bool get_vs_calib_button();
 bool get_hall_calib_button();
 
@@ -140,8 +141,8 @@ int outputStates[vs_sen_num][1] = {
 uint8_t vibeSettings[vs_sen_num][3];
 
 // TODO increase sample duration
-const int vs_time_per_sample = 30;  // time per vs sample
-const int vs_calib_duration = 5000; // time for vs calibration period. in millisec
+const int vs_time_per_sample = 20;   // time per vs sample
+const int vs_calib_duration = 10000; // time for vs calibration period. in millisec
 const int vs_sample_num = vs_calib_duration / vs_time_per_sample;
 const int total_vs_data = vs_sample_num * vs_sen_num; // 4000/40 * 5 =500
 const int test = 2;
@@ -184,10 +185,10 @@ State vs_s = standby;
 const int sensor_num = 6;
 const int interval_duration = 2000;                                        // ms
 const int intervals = 8;                                                   // 13 is max memorywise
-const int samples_per_interval = 110;                                      // 110mm arc len on thumb tip / 1mm percision goal
+const int samples_per_interval = 125;                                      // 110mm arc len on thumb tip / 1mm percision goal
 const int hall_time_per_sample = interval_duration / samples_per_interval; // 2000/110 = 18.2s
 const int calib_duration = interval_duration * intervals;
-const int total_samples = intervals * samples_per_interval; // --------------------------------make smaller to fix memory issues
+const int total_hall_samples = intervals * samples_per_interval; // --------------------------------make smaller to fix memory issues
 
 // GLobal Vars
 int hall_calib_i = 0;
@@ -202,9 +203,12 @@ int hall_6 = 0;
 
 // Timers
 // TODO Refactor these with drews timer
-unsigned long start_time;
+unsigned long vs_start_time;
+unsigned long hall_start_time;
+unsigned long hall_elapsed_time;
 unsigned long elapsed_time;
-long vs_old_sample_time;
+unsigned long vs_old_start_time;
+unsigned long hall_old_start_time;
 
 // Kalman Filter
 float pos_noise = 0.01;
@@ -301,9 +305,6 @@ void setup()
   // timerAlarmEnable(timer);
 
   //[data sample len][force, force']--------------------------------make smaller to fix memory issues
-  vs_data = (double **)malloc(total_vs_data * sizeof(double *));
-  for (int i = 0; i < total_vs_data; i++)
-    vs_data[i] = (double *)malloc(2 * sizeof(double));
 }
 
 long lastLoop = 0;
@@ -385,7 +386,7 @@ void loop()
   //   //   haptics.drv->go();
   //   // }
   // }
-  velostatHandler(true, false);
+  velostatHandler(false, false);
 
   int pos = hallPos(true);
   // Serial.print("Position from Hall: ");
@@ -418,7 +419,7 @@ void hall_calib_switch()
 {
   Serial.println("Switching to hall sensor calibration.");
   hall_s = calibration;
-  start_time = millis();
+  hall_start_time = millis();
   hall_calib_i = 0;
 
   digitalWrite(LED_pin, HIGH);
@@ -442,31 +443,26 @@ float hallPos(bool debug_prints)
   switch (hall_s)
   {
   case standby:
-    if (debug_prints)
-      Serial.println("hall standby");
 
     // calib_button_push = get_hall_calib_button();
     hall_calib_button_push = (vs_s == working);
     if (hall_calib_button_push && vs_s != calibration)
     {
-      if (debug_prints)
-      {
-        Serial.println("PUSHED");
-      }
+
       hall_calib_switch();
     }
     break;
 
   case calibration:
     // calibrate, storing sum in averaged_data
-    if (vs_calib_i < (samples_per_interval * intervals))
+    if (hall_calib_i < (total_hall_samples))
     {
       // delay sampling to achive desired rate
-      if ((millis() - start_time) < (elapsed_time + hall_time_per_sample))
+      if ((millis() - hall_start_time) < (hall_elapsed_time + hall_time_per_sample))
       {
         if (debug_prints)
         {
-          Serial.print("Hall reading delayed");
+          Serial.println("Hall calibration reading delayed.");
         }
       }
       else
@@ -494,7 +490,7 @@ float hallPos(bool debug_prints)
           Serial.println(" while closing");
         }
 
-        update_elapsed_time();
+        update_hall_elapsed_time();
 
         hRead();
         float input[] = {adc2v(hall_1), adc2v(hall_2), adc2v(hall_3), adc2v(hall_4), adc2v(hall_5), adc2v(hall_6)};
@@ -528,6 +524,7 @@ float hallPos(bool debug_prints)
         }
 
         hall_calib_i++;
+        vs_start_time = hall_start_time;
       }
     }
     else
@@ -549,6 +546,7 @@ float hallPos(bool debug_prints)
       Serial.print("Calibrated, now returning estimated pos. ");
       digitalWrite(LED_pin, LOW);
     }
+
     break;
 
   case working:
@@ -612,8 +610,13 @@ void vs_calib_switch()
 {
   Serial.println("Switching to velostat sensor calibration.");
   vs_s = calibration;
-  start_time = millis();
+  vs_start_time = millis();
+  vs_old_start_time = vs_start_time;
   vs_calib_i = 0;
+
+  vs_data = (double **)malloc(total_vs_data * sizeof(double *));
+  for (int i = 0; i < total_vs_data; i++)
+    vs_data[i] = (double *)malloc(2 * sizeof(double));
 
   digitalWrite(LED_pin, HIGH);
   delay(interval_duration * .05);
@@ -654,10 +657,14 @@ void velostatHandler(bool debug_prints, bool diagonal)
 
   case calibration:
     // calibrate, storing in KNN
+    Serial.print("Calibrating VS Clasifier");
+    Serial.print(vs_calib_i);
+    Serial.print("/");
+    Serial.println(vs_sample_num);
     if (vs_calib_i < (vs_sample_num))
     {
       // delay sampling to achive desired rate
-      if ((millis() - vs_old_sample_time) < (elapsed_time + vs_time_per_sample))
+      if ((millis() - vs_old_start_time) < (elapsed_time + vs_time_per_sample))
       {
         if (debug_prints)
         {
@@ -671,12 +678,8 @@ void velostatHandler(bool debug_prints, bool diagonal)
 
         if (debug_prints)
         {
-          Serial.print("----VS Readings for sample ");
-          Serial.print(vs_calib_i);
-          Serial.print("/");
-          Serial.print(vs_sample_num);
           Serial.print(" actual interval");
-          Serial.print(vs_sample_time - vs_old_sample_time);
+          Serial.print(vs_sample_time - vs_old_start_time);
           Serial.print(" desired interval ");
           Serial.print(vs_time_per_sample);
           Serial.println("----");
@@ -694,7 +697,7 @@ void velostatHandler(bool debug_prints, bool diagonal)
           }
         }
         vs_calib_i++;
-        vs_old_sample_time = vs_sample_time;
+        vs_old_start_time = vs_start_time;
       }
     }
     else
@@ -704,10 +707,7 @@ void velostatHandler(bool debug_prints, bool diagonal)
 
       clusterer.Initialize(total_vs_data, vs_data);
 
-      if (debug_prints)
-      {
-        Serial.println("Kmeans initialized, now updating vs globals. ");
-      }
+      Serial.println("Kmeans initialized, now clasifying VS inputs. ");
 
       for (int i = 0; i < total_vs_data; i++)
         free(vs_data[i]);
@@ -728,16 +728,23 @@ void velostatHandler(bool debug_prints, bool diagonal)
       outputStates[i][0] = classification;
       if (debug_prints)
       {
-
+        Serial.print("Velostat reeding at segment ");
+        Serial.print(i);
+        Serial.print(" : ");
         Serial.print(veloReadings[i][0]);
         Serial.print(", ");
         Serial.println(veloReadings[i][1]);
-
-        Serial.print("Prediction: ");
-        Serial.println(classification);
       }
-      delay(5000);
+
+      // delay(5000);
     }
+    Serial.print("VS tactile clasifications: ");
+    for (int i = 0; i < vs_sen_num; i++)
+    {
+      Serial.print(outputStates[i][0]);
+      Serial.print(", ");
+    }
+    Serial.println("");
 
     vs_calib_button_push = get_vs_calib_button();
     if (vs_calib_button_push)
@@ -754,7 +761,6 @@ bool get_vs_calib_button()
   // TODO connect to web UI
   return false;
 }
-
 bool get_hall_calib_button()
 {
   // TODO connect to web UI
@@ -771,7 +777,6 @@ long vsRead()
   }
   return update_elapsed_time();
 }
-
 long hRead()
 {
   hall_1 = Hall1KalmanFilter.updateEstimate(analogRead(Hall_1_Pin));
@@ -786,7 +791,13 @@ long hRead()
 long update_elapsed_time()
 {
   long current_time = millis();
-  elapsed_time = current_time - start_time;
+  elapsed_time = current_time - vs_start_time;
+  return current_time;
+}
+long update_hall_elapsed_time()
+{
+  long current_time = millis();
+  hall_elapsed_time = current_time - hall_start_time;
   return current_time;
 }
 
