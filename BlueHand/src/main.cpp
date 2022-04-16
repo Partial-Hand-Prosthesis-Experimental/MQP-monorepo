@@ -348,16 +348,10 @@ void loop()
 void IRAM_ATTR TimerHandler0()
 {
   portENTER_CRITICAL_ISR(&timerMux);
-
-  for (int i = 0; i < sizeof(veloAddrs) / sizeof(int); i++)
-  {
-    veloReadings[i][1] = veloReadings[i][0] - veloReadings[i][1];
-    veloReadings[i][0] = analogRead(veloAddrs[i]);
-  }
   currentReading = analogRead(currentPin);
   // Since jank electronics pushes up the gnd for the motor system, the reading
   // would naturally fall by the voltage dropped by the current sense resistor
-  potReading = analogRead(potPin); //  + currentReading;
+  potReading = analogRead(potPin)  + currentReading;
   portEXIT_CRITICAL_ISR(&timerMux);
 }
 
