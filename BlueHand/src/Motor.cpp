@@ -6,18 +6,19 @@ Motor::Motor(int pinA1, int pinA2, volatile int* potReading, volatile int* curre
     _potReading = potReading;
     _currentReading = currentReading;
     // Setup the pwm channels
-    ledcSetup(0, 40000, 16);
+    ledcSetup(0, 20000, 16);
     ledcAttachPin(_pinA1, 0);
-    ledcSetup(1, 40000, 16);
+    ledcSetup(1, 20000, 16);
     ledcAttachPin(_pinA2, 1);
 
     // Setup minipid
     _pid.reset();
-    _pid.setPID(0.005, 0.000005, 0.0001);
+    _pid.setPID(0.0005, 0.000002, 0.001);
     _pid.setOutputLimits(-1.0, 1.0);
     _currentpid.reset();
-    _currentpid.setPID(5, 0.0001, 0.0);
-    _currentpid.setOutputLimits(-65535, 65535.0);
+    _currentpid.setPID(1.0, 0.05, 0.0);
+    _currentpid.setOutputLimits(-65535.0, 65535.0);
+    _currentpid.setOutputFilter(0.4);
 }
 
 Motor::Motor(int pinA1, int pinA2, volatile int* potReading, volatile int* currentReading, BLEProp* prop) {
@@ -55,7 +56,6 @@ void Motor::current(float_t current, float_t maxCurrent) {
 void Motor::position(float_t position) {
     // sensor, target
     float_t out = (float_t)_pid.getOutput(*_potReading, position);
-    current(out, 0.1); // TODO: make max current 0.9*the max voltage dropped by the sense resistor
+    current(out, 0.12); // TODO: make max current 0.9*the max voltage dropped by the sense resistor
     // Sense resistors voltage is a function of the battery voltage and the motor resistance + sense resistance
-    //speed(out);
 }

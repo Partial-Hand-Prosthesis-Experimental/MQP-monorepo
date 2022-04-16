@@ -52,6 +52,8 @@ int potPin = 26;
 int currentPin = 27;
 volatile int potReading = 0;
 volatile int currentReading = 0;
+int sharedPotReading = 0;
+int sharedCurrentReading = 0;
 
 // Timer setup
 #define TIMER0_INTERVAL_US 50
@@ -60,7 +62,7 @@ void IRAM_ATTR TimerHandler0();
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 hw_timer_t *timer = NULL;
 
-Motor motor(25, 33, &potReading, &currentReading);
+Motor motor(25, 33, &sharedPotReading, &sharedCurrentReading);
 
 // See the following for generating UUIDs:
 // https://www.uuidgenerator.net/
@@ -71,8 +73,8 @@ Motor motor(25, 33, &potReading, &currentReading);
 #define CHARACTERISTIC_UUID_TEST3 "6e400006-b5a3-f393-e0a9-e50e24dcca9e"
 #define SERVICE_UUID_VIBCONF "6e400007-b5a3-f393-e0a9-e50e24dcca9e"
 #define CHARACTERISTIC_UUID_VIBCONF "6e400008-b5a3-f393-e0a9-e50e24dcca9e"
-#define SERVICE_UUID_VELO1 "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
-#define CHARACTERISTIC_UUID_VELO1 "6e400004-b5a3-f393-e0a9-e50e24dcca9e"
+#define SERVICE_UUID_VELO "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
+#define CHARACTERISTIC_UUID_VELO "6e400004-b5a3-f393-e0a9-e50e24dcca9e"
 #define SERVICE_UUID_VELO2 "6e400009-b5a3-f393-e0a9-e50e24dcca9e"
 #define CHARACTERISTIC_UUID_VELO2 "6e40000a-b5a3-f393-e0a9-e50e24dcca9e"
 #define SERVICE_UUID_VELO2 "6e40000b-b5a3-f393-e0a9-e50e24dcca9e"
@@ -80,7 +82,9 @@ Motor motor(25, 33, &potReading, &currentReading);
 
 BLEProp test1(SERVICE_UUID_TEST1, CHARACTERISTIC_UUID_TEST1, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
 BLEProp test3(SERVICE_UUID_TEST3, CHARACTERISTIC_UUID_TEST3, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
-BLEProp velo1(SERVICE_UUID_VELO1, CHARACTERISTIC_UUID_VELO1, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4 * 20);
+
+BLEProp velo(SERVICE_UUID_VELO, CHARACTERISTIC_UUID_VELO, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4*20);
+
 BLEProp velo2(SERVICE_UUID_VELO2, CHARACTERISTIC_UUID_VELO2, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
 BLEProp vibConf(SERVICE_UUID_VIBCONF, CHARACTERISTIC_UUID_VIBCONF, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, sizeof(uint8_t) * 15);
 
@@ -141,6 +145,7 @@ const int total_vs_samples = vs_calib_duration / vs_time_per_sample; // 10000/15
 
 float vs_data[total_vs_samples * vs_sen_num][2] = {0}; //[data sample len][force, force']--------------------------------make smaller to fix memory issues
 
+
 // -------------------------------Brian globals
 // TODO Fix all of these. All are from arduino nano
 // Pins
@@ -150,7 +155,7 @@ const int calib_button_pin = 35; // D4
 // const int potPin = 1; we both used pot pin
 int LED_pin = 22; // esp32 onboard
 
-const int Hall_1_Pin = 25;
+const int Hall_1_Pin = 36; // Changed by drew
 const int Hall_2_Pin = 26;
 const int Hall_3_Pin = 27;
 const int Hall_4_Pin = 15;
@@ -181,6 +186,7 @@ const int samples_per_interval = 125;
 const int hall_time_per_sample = interval_duration / samples_per_interval;
 const int calib_duration = interval_duration * intervals;
 const int total_samples = intervals * samples_per_interval; // --------------------------------make smaller to fix memory issues
+
 
 // GLobal Vars
 int hall_calib_i = 0;
@@ -241,7 +247,7 @@ void setup()
   test1.attach(pServer);
   test3.attach(pServer);
   vibConf.attach(pServer);
-  velo1.attach(pServer);
+  velo.attach(pServer);
   velo2.attach(pServer);
 
   Serial.println("Server initialized");
@@ -251,13 +257,15 @@ void setup()
   pServer->getAdvertising()->start();
 
   test1.setValue(1.0);
-  test3.setValue(0.0);
-  velo1.setBytes((uint8_t *)veloReadings, 4 * 20);
+
+  test3.setValue(0.5);
+  velo.setBytes((uint8_t*)veloReadings, 4 * 20);
+
   velo2.setValue(0.0);
   vibConf.setBytes((uint8_t *)vibeSettings, sizeof(vibeSettings));
 
   vibConf.notify();
-  velo1.notify();
+  velo.notify();
   velo2.notify();
   test1.notify();
   test3.notify();
@@ -286,29 +294,39 @@ void setup()
   } while (init_i < 20);
 
   // Setup timer
-  timer = timerBegin(2, 80, true);
-  timerAttachInterrupt(timer, &TimerHandler0, true);
-  timerAlarmWrite(timer, 500, true);
-  timerAlarmEnable(timer);
+  //timer = timerBegin(1, 80, true);
+  //timerAttachInterrupt(timer, &TimerHandler0, true);
+  //timerAlarmWrite(timer, 500, true);
+  // timerAlarmEnable(timer);
 }
 
-int lastLoop = 0;
+long lastLoop = 0;
 
 void loop()
 {
-  if (micros() > lastLoop + 500)
+  // vTaskEnterCritical(&timerMux);
+  // sharedPotReading = (int)potReading;
+  // sharedCurrentReading = (int)currentReading;
+  // vTaskExitCritical(&timerMux);
+
+  sharedCurrentReading = analogRead(currentPin);
+  sharedPotReading = analogRead(potPin) + sharedCurrentReading;
+
+  if (micros() > lastLoop + 1000)
   {
-    //  motor.position(std::map<int, float>(test3.getFloat() * 65535), 0, 65535, 500, 3900));
+    motor.position(test3.getFloat()*(3800-200)+200);
+    lastLoop = micros();
   }
   if (deviceConnected)
   {
     if (lastNotifyTime + 10 < millis())
     {
-      test1.setValue(currentReading / 4096.0);
+      test1.setValue(sharedPotReading / 4096.0);
       test1.notify();
-      velo1.setBytes((uint8_t *)veloReadings, 4 * 20);
-      velo1.notify();
-      // velo2.setValue((float)65.7 * powf(analogReadMilliVolts(velo1pin) / 1000.0, -1.35));
+
+      velo.setBytes((uint8_t*)veloReadings, 4 * 20);
+      velo.notify();
+      // velo2.setValue((float)65.7 * powf(analogReadMilliVolts(velopin) / 1000.0, -1.35));
       velo2.notify();
       test3.notify();
       preferences.putBytes("vibConf", vibConf.getData(), vibConf.byteCount);
@@ -355,7 +373,7 @@ void loop()
     //   haptics.vibeselect(0);
     //   haptics.drv->go();
     // }
-    // if ((float)65.7 * powf(analogReadMilliVolts(velo1pin) / 1000.0, -1.35) > 300)
+    // if ((float)65.7 * powf(analogReadMilliVolts(velopin) / 1000.0, -1.35) > 300)
     // {
     //   haptics.vibeselect(1);
     //   haptics.drv->go();
@@ -364,7 +382,6 @@ void loop()
 
   int pos = hallPos(false);
 
-  lastLoop = micros();
 }
 
 // Currently Runs at 20khz, see #define TIMER0_INTERVAL_US        50
@@ -416,7 +433,7 @@ float hallPos(bool debug_prints)
   switch (hall_s)
   {
   case standby:
-    Serial.println("standby");
+    if(debug_prints) Serial.println("standby");
     calib_button_push = get_hall_calib_button();
     if (calib_button_push)
     {
@@ -639,6 +656,7 @@ void velostatHandler(bool debug_prints, bool diagonal)
         {
           vs_data[(vs_calib_i * 5) + i][0] = veloReadings[i][0];
           vs_data[(vs_calib_i * 5) + i][1] = veloReadings[i][1];
+
         }
         vs_calib_i++;
       }
