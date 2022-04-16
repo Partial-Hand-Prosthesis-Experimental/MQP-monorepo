@@ -140,11 +140,11 @@ int outputStates[vs_sen_num][1] = {
 uint8_t vibeSettings[vs_sen_num][3];
 
 // TODO increase sample duration
-const int vs_time_per_sample = 30;                                   // time per vs sample
-const int vs_calib_duration = 7000;                                  // time for vs calibration period. in millisec
-const int total_vs_samples = vs_calib_duration / vs_time_per_sample; // 10000/15 =666
+const int vs_time_per_sample = 20;                                                  // time per vs sample
+const int vs_calib_duration = 500;                                                 // time for vs calibration period. in millisec
+const int total_vs_samples = (vs_calib_duration / vs_time_per_sample) * vs_sen_num; // 4000/40 * 5 =500
 
-float vs_data[total_vs_samples * vs_sen_num][2] = {0}; //[data sample len][force, force']--------------------------------make smaller to fix memory issues
+float vs_data[total_vs_samples][2] = {0}; //[data sample len][force, force']--------------------------------make smaller to fix memory issues
 
 // -------------------------------Brian globals
 // TODO Fix all of these. All are from arduino nano
@@ -176,14 +176,14 @@ enum State
 };
 
 State hall_s = standby;
-State vs_s = standby;
+State vs_s = calibration;
 
 // Global Consts
 const int sensor_num = 6;
-const int interval_duration = 2000; // ms
-const int intervals = 8;            // 13 is max memorywise
-const int samples_per_interval = 125;
-const int hall_time_per_sample = interval_duration / samples_per_interval;
+const int interval_duration = 2000;                                        // ms
+const int intervals = 4;                                                   // 13 is max memorywise
+const int samples_per_interval = 110;                                      // 110mm arc len on thumb tip / 1mm percision goal
+const int hall_time_per_sample = interval_duration / samples_per_interval; // 2000/110 = 18.2s
 const int calib_duration = interval_duration * intervals;
 const int total_samples = intervals * samples_per_interval; // --------------------------------make smaller to fix memory issues
 
@@ -217,8 +217,8 @@ SimpleKalmanFilter Hall6KalmanFilter(1, 1, noise);
 KNNClassifier myKNN(sensor_num); // same as sensor_num
 // GMM Clasifier
 int vibrohaptic_response_num = 3;
-Gaussian_Mixture_Model myGMM_diagonal("diagonal", 2, vibrohaptic_response_num);
-Gaussian_Mixture_Model myGMM_other("other", 2, vibrohaptic_response_num);
+Gaussian_Mixture_Model myGMM_diagonal("diagonal", total_vs_samples, vibrohaptic_response_num);
+Gaussian_Mixture_Model myGMM_other("other", total_vs_samples, vibrohaptic_response_num);
 
 void setup()
 {
@@ -307,78 +307,83 @@ void loop()
   // sharedCurrentReading = (int)currentReading;
   // vTaskExitCritical(&timerMux);
 
-  sharedCurrentReading = analogRead(currentPin);
-  sharedPotReading = analogRead(potPin) + sharedCurrentReading;
+  // sharedCurrentReading = analogRead(currentPin);
+  // sharedPotReading = analogRead(potPin) + sharedCurrentReading;
 
-  if (micros() > lastLoop + 1000)
-  {
-    motor.position(test3.getFloat() * (3800 - 200) + 200);
-    lastLoop = micros();
-  }
-  if (deviceConnected)
-  {
-    if (lastNotifyTime + 10 < millis())
-    {
-      test1.setValue(sharedPotReading / 4096.0);
-      test1.notify();
+  // if (micros() > lastLoop + 1000)
+  // {
+  //   motor.position(test3.getFloat() * (3800 - 200) + 200);
+  //   lastLoop = micros();
+  // }
+  // if (deviceConnected)
+  // {
+  //   if (lastNotifyTime + 10 < millis())
+  //   {
+  //     test1.setValue(sharedPotReading / 4096.0);
+  //     test1.notify();
 
-      velo.setBytes((uint8_t *)veloReadings, 4 * 20);
-      velo.notify();
-      // velo2.setValue((float)65.7 * powf(analogReadMilliVolts(velopin) / 1000.0, -1.35));
-      velo2.notify();
-      test3.notify();
-      preferences.putBytes("vibConf", vibConf.getData(), vibConf.byteCount);
-      vibConf.setBytes((uint8_t *)vibeSettings, sizeof(vibeSettings));
-      vibConf.notify();
-      lastNotifyTime = millis();
-    }
-  }
+  //     velo.setBytes((uint8_t *)veloReadings, 4 * 20);
+  //     velo.notify();
+  //     // velo2.setValue((float)65.7 * powf(analogReadMilliVolts(velopin) / 1000.0, -1.35));
+  //     velo2.notify();
+  //     test3.notify();
+  //     preferences.putBytes("vibConf", vibConf.getData(), vibConf.byteCount);
+  //     vibConf.setBytes((uint8_t *)vibeSettings, sizeof(vibeSettings));
+  //     vibConf.notify();
+  //     lastNotifyTime = millis();
+  //   }
+  // }
 
-  // disconnecting
-  if (!deviceConnected && oldDeviceConnected)
-  {
-    delay(500); // give the bluetooth stack the chance to get things ready
-    pServer->disconnect(0);
-    pServer->getAdvertising()->setScanResponse(true);
-    pServer->startAdvertising(); // restart advertising
-    Serial.println("start advertising");
-    oldDeviceConnected = deviceConnected;
-    Serial.println("Client Disconnected");
-  }
-  // connecting
-  if (deviceConnected && !oldDeviceConnected)
-  {
-    // do stuff here on connecting
-    oldDeviceConnected = deviceConnected;
-    Serial.println("Client Connected");
-  }
+  // // disconnecting
+  // if (!deviceConnected && oldDeviceConnected)
+  // {
+  //   delay(500); // give the bluetooth stack the chance to get things ready
+  //   pServer->disconnect(0);
+  //   pServer->getAdvertising()->setScanResponse(true);
+  //   pServer->startAdvertising(); // restart advertising
+  //   Serial.println("start advertising");
+  //   oldDeviceConnected = deviceConnected;
+  //   Serial.println("Client Disconnected");
+  // }
+  // // connecting
+  // if (deviceConnected && !oldDeviceConnected)
+  // {
+  //   // do stuff here on connecting
+  //   oldDeviceConnected = deviceConnected;
+  //   Serial.println("Client Connected");
+  // }
 
-  for (int i = 0; i < 3; i++)
-  {
-    if (vibConf.getData()[2 + i] == 1)
-    {
-      uint8_t *vibUpdate = vibConf.getData();
-      vibUpdate[2 + i] = 0;
-      vibConf.setBytes(vibUpdate, 8);
-      haptics.vibeselect(i);
-      Serial.print("go on haptic #");
-      Serial.println(i);
-      haptics.drv->go();
-    }
+  // for (int i = 0; i < 3; i++)
+  // {
+  //   if (vibConf.getData()[2 + i] == 1)
+  //   {
+  //     uint8_t *vibUpdate = vibConf.getData();
+  //     vibUpdate[2 + i] = 0;
+  //     vibConf.setBytes(vibUpdate, 8);
+  //     haptics.vibeselect(i);
+  //     Serial.print("go on haptic #");
+  //     Serial.println(i);
+  //     haptics.drv->go();
+  //   }
 
-    // if ((float)65.7 * powf(analogReadMilliVolts(velo0pin) / 1000.0, -1.35) > 300)
-    // {
-    //   haptics.vibeselect(0);
-    //   haptics.drv->go();
-    // }
-    // if ((float)65.7 * powf(analogReadMilliVolts(velopin) / 1000.0, -1.35) > 300)
-    // {
-    //   haptics.vibeselect(1);
-    //   haptics.drv->go();
-    // }
-  }
+  //   // if ((float)65.7 * powf(analogReadMilliVolts(velo0pin) / 1000.0, -1.35) > 300)
+  //   // {
+  //   //   haptics.vibeselect(0);
+  //   //   haptics.drv->go();
+  //   // }
+  //   // if ((float)65.7 * powf(analogReadMilliVolts(velopin) / 1000.0, -1.35) > 300)
+  //   // {
+  //   //   haptics.vibeselect(1);
+  //   //   haptics.drv->go();
+  //   // }
+  // }
 
   int pos = hallPos(false);
+  // Serial.print("Position from Hall: ");
+  // Serial.println(pos);
+
+  velostatHandler(true, false);
+  // delay(1);
 }
 
 // Currently Runs at 20khz, see #define TIMER0_INTERVAL_US        50
@@ -533,8 +538,9 @@ float hallPos(bool debug_prints)
       hall_s = working; // TODO make motoring
       Serial.print("Calibrated, now returning estimated pos. ");
       digitalWrite(LED_pin, LOW);
-      break;
     }
+    break;
+
   case working:
     hRead();
 
@@ -615,12 +621,12 @@ void vs_calib_switch()
 
 void velostatHandler(bool debug_prints, bool diagonal)
 {
-  switch (hall_s)
+  switch (vs_s)
   {
   case standby:
     if (debug_prints)
     {
-      Serial.println("In standby.");
+      Serial.println("VS in standby.");
     }
     calib_button_push = get_vs_calib_button();
     if (calib_button_push)
@@ -635,76 +641,95 @@ void velostatHandler(bool debug_prints, bool diagonal)
 
   case calibration:
     // calibrate, storing in KNN
-    if (vs_calib_i < (samples_per_interval * intervals))
+    if (vs_calib_i < (total_vs_samples))
     {
       // delay sampling to achive desired rate
       if ((millis() - start_time) < (elapsed_time + vs_time_per_sample))
       {
         if (debug_prints)
         {
-          Serial.print("vs reading delayed");
+          // Serial.print("vs reading delayed");
         }
       }
       else
       { // undelayed
-        vsRead();
+        
+        static long vs_sample_time = vsRead();
+
+        if (debug_prints)
+        {
+          Serial.print("----VS Readings for sample ");
+          Serial.print(vs_calib_i);
+          Serial.print("/");
+          Serial.print(total_vs_samples);
+          Serial.print(" actual interval");
+          Serial.print(total_vs_samples);
+
+          Serial.println("----");
+        }
+
         for (int i = 0; i < vs_sen_num; i++)
         {
           vs_data[(vs_calib_i * 5) + i][0] = veloReadings[i][0];
           vs_data[(vs_calib_i * 5) + i][1] = veloReadings[i][1];
+          if (debug_prints)
+          {
+            Serial.print(veloReadings[i][0]);
+            Serial.print(", ");
+            Serial.println(veloReadings[i][0]);
+          }
         }
         vs_calib_i++;
       }
     }
     else
     {
-      Serial.println("Calibrated, initialising GMMs...");
-      if (debug_prints)
-      {
-        update_elapsed_time();
-      }
-      myGMM_diagonal.Initialize((total_vs_samples * vs_sen_num), (double **)vs_data);
-      myGMM_other.Initialize((total_vs_samples * vs_sen_num), (double **)vs_data);
+      Serial.println("Calibrated, initialising GMM...");
 
-      if (debug_prints)
-      {
-        long gmm_end = millis();
-        Serial.print("Gmms trained over ");
-        Serial.print((gmm_end - elapsed_time) / 1000);
-        Serial.println("s. ");
-
-        Serial.println("Now updating vs globals. ");
-      }
-
-      hall_s = working; // TODO make motoring
-      digitalWrite(LED_pin, LOW);
-      break;
-    }
-  case working:
-    vsRead();
-    double certainty[vs_sen_num][2];
-    for (int i = 0; i < vs_sen_num; i++)
-    {
-      float *d = veloReadings[i];
-      int classification_diagonal = myGMM_diagonal.Classify((double *)d);
-      int classification_other = myGMM_other.Classify((double *)d);
-      if (debug_prints)
-      {
-        double l_d = myGMM_diagonal.Calculate_Likelihood((double *)d);
-        double l_o = myGMM_other.Calculate_Likelihood((double *)d);
-        Serial.print("Likliehoood of prediction for diagonal: ");
-        Serial.println(l_d);
-        Serial.print("Likliehoood of prediction for other: ");
-        Serial.println(l_o);
-      }
       if (diagonal)
       {
-        outputStates[i][0] = classification_diagonal;
+        myGMM_diagonal.Initialize((total_vs_samples * vs_sen_num), (double **)vs_data);
       }
       else
       {
-        outputStates[i][0] = classification_other;
+        myGMM_other.Initialize((total_vs_samples * vs_sen_num), (double **)vs_data);
       }
+
+      if (debug_prints)
+      {
+        Serial.println("Now updating vs globals. ");
+      }
+
+      vs_s = working; // TODO make motoring
+      digitalWrite(LED_pin, LOW);
+    }
+    break;
+  case working:
+    vsRead();
+    for (int i = 0; i < vs_sen_num; i++)
+    {
+      float *d = veloReadings[i];
+      double likliehoood;
+      int classification;
+      if (diagonal)
+      {
+        classification = myGMM_diagonal.Classify((double *)d);
+        likliehoood = myGMM_diagonal.Calculate_Likelihood((double *)d);
+      }
+      else
+      {
+        classification = myGMM_other.Classify((double *)d);
+        likliehoood = myGMM_other.Calculate_Likelihood((double *)d);
+      }
+      outputStates[i][0] = classification;
+      if (debug_prints)
+      {
+        Serial.print("Prediction: ");
+        Serial.println(classification);
+        Serial.print("Likliehoood of prediction: ");
+        Serial.println(likliehoood);
+      }
+      delay(5000);
     }
 
     calib_button_push = get_vs_calib_button();
@@ -729,7 +754,7 @@ bool get_hall_calib_button()
   return false;
 }
 
-long vsread()
+long vsRead()
 {
 
   for (int i = 0; i < sizeof(veloAddrs) / sizeof(int); i++)
@@ -753,7 +778,7 @@ long hRead()
 
 long update_elapsed_time()
 {
-  unsigned long current_time = millis();
+  long current_time = millis();
   elapsed_time = current_time - start_time;
   return current_time;
 }
