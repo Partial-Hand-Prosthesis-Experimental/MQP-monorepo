@@ -107,28 +107,36 @@ long hRead();
 int muxedRead(int mux, int pin);
 float muxedReadVolts(int mux, int pin);
 
-void update_elapsed_time();
+long update_elapsed_time();
 bool get_vs_calib_button();
 bool get_hall_calib_button();
 
 // Velostat Variables
 Haptics haptics(2);
+const int vs_sen_num = 5;
 int veloAddrs[5] = {0, 1, 2, 3, 4};
 
-float veloReadings[5][2] = {
+float veloReadings[vs_sen_num][2] = {
     {0, 0},
     {0, 0},
     {0, 0},
     {0, 0},
     {0, 0}};
 
-int outputStates[5][1] = {
+int outputStates[vs_sen_num][1] = {
     {0},
     {0},
     {0},
     {0},
     {0}};
-uint8_t vibeSettings[5][3];
+uint8_t vibeSettings[vs_sen_num][3];
+
+// TODO increase sample duration
+const int vs_time_per_sample = 15;                                   // time per vs sample
+const int vs_calib_duration = 10000;                                 // time for vs calibration period. 10 sec
+const int total_vs_samples = vs_calib_duration / vs_time_per_sample; // 10000/15 =666
+
+float vs_data[total_vs_samples * vs_sen_num][2] = {0}; //[data sample len][force, force']
 
 // -------------------------------Brian globals
 // TODO Fix all of these. All are from arduino nano
@@ -170,15 +178,6 @@ const int samples_per_interval = 125;
 const int hall_time_per_sample = interval_duration / samples_per_interval;
 const int calib_duration = interval_duration * intervals;
 const int total_samples = intervals * samples_per_interval;
-
-// float averaged_data[samples_per_interval][sensor_num] = {0};
-
-// TODO increase sample duration
-const int vs_time_per_sample = 15;                                   // time per vs sample
-const int vs_calib_duration = 10000;                                 // time for vs calibration period. 10 sec
-const int total_vs_samples = vs_calib_duration / vs_time_per_sample; // 10000/15 =666
-
-float vs_data[total_vs_samples][2] = {0};
 
 // GLobal Vars
 int hall_calib_i = 0;
@@ -641,7 +640,11 @@ void velostatHandler(bool debug_prints)
       else
       { // undelayed
         vsRead();
-
+        for (int i = 0; i < vs_sen_num; i++)
+        {
+          vs_data[vs_calib_i + i][0] = 0;
+          vs_data[vs_calib_i + i][1] = 0;
+        }
         vs_calib_i++;
       }
     }
@@ -689,7 +692,7 @@ long vsread()
     veloReadings[i][1] = (float)(veloReadings[i][0] - veloReadings[i][1]);
     veloReadings[i][0] = (float)65.7 * powf(muxedReadVolts(0, i), -1.35);
   }
-  return micros();
+  return update_elapsed_time();
 }
 
 long hRead()
@@ -700,14 +703,14 @@ long hRead()
   hall_4 = Hall4KalmanFilter.updateEstimate(analogRead(Hall_4_Pin));
   hall_5 = Hall5KalmanFilter.updateEstimate(analogRead(Hall_5_Pin));
   hall_6 = Hall6KalmanFilter.updateEstimate(analogRead(Hall_6_Pin));
-  long time = millis();
-  return time;
+  return update_elapsed_time();
 }
 
-void update_elapsed_time()
+long update_elapsed_time()
 {
   unsigned long current_time = millis();
   elapsed_time = current_time - start_time;
+  return current_time;
 }
 
 int muxedRead(int mux, int pin)
