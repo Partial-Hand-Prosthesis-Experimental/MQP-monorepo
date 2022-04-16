@@ -74,9 +74,9 @@ Motor motor(25, 33, &potReading, &currentReading);
 
 BLEProp test1(SERVICE_UUID_TEST1, CHARACTERISTIC_UUID_TEST1, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
 BLEProp test3(SERVICE_UUID_TEST3, CHARACTERISTIC_UUID_TEST3, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
-BLEProp velo1(SERVICE_UUID_VELO1, CHARACTERISTIC_UUID_VELO1, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
+BLEProp velo1(SERVICE_UUID_VELO1, CHARACTERISTIC_UUID_VELO1, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4*20);
 BLEProp velo2(SERVICE_UUID_VELO2, CHARACTERISTIC_UUID_VELO2, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
-BLEProp vibConf(SERVICE_UUID_VIBCONF, CHARACTERISTIC_UUID_VIBCONF, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 20);
+BLEProp vibConf(SERVICE_UUID_VIBCONF, CHARACTERISTIC_UUID_VIBCONF, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, sizeof(uint8_t)*15);
 
 class MyServerCallbacks : public BLEServerCallbacks
 {
@@ -101,6 +101,7 @@ void velostatHandler();
 long vsRead();
 long hRead();
 int muxedRead(int mux, int pin);
+float muxedReadVolts(int mux, int pin);
 
 // Velostat Variables
 Haptics haptics(2);
@@ -114,12 +115,13 @@ float veloReadings[5][2] = {
     {0, 0},
     {0, 0}};
 
-int outpustates[5][1] = {
+int outputStates[5][1] = {
     {0},
     {0},
     {0},
     {0},
     {0}};
+uint8_t vibeSettings [5][3];
 
 // -------------------------------Brian globals
 // TODO Fix all of these. All are from arduino nano
@@ -193,22 +195,23 @@ KNNClassifier myKNN(sensor_num); // same as sensor_num
 void setup()
 {
   Serial.begin(115200);
-  uint8_t vibConfStart[] = {
-      255,
-      255,
-      0,
-      0,
-      0,
-      127,
-      63,
-      31};
   preferences.begin("vibro", false);
-  // preferences.getBytes("vibConf", vibConfStart, 8U);
-  preferences.putBytes("vibConf", vibConfStart, sizeof(vibConfStart));
+  if(!preferences.isKey("vibConf")) {
+    uint8_t initialConfig[5][3] = {
+      {0, 47, 51},
+      {0, 47, 51},
+      {0, 47, 51},
+      {0, 47, 51},
+      {0, 47, 51}
+    };
+    preferences.putBytes("vibConf", initialConfig, sizeof(initialConfig));
+  }
+  preferences.getBytes("vibConf", vibeSettings, sizeof(vibeSettings));
+  
 
   // Create the BLE Device
   BLEDevice::init("Prosthesis");
-  // BLEDevice::setMTU(64); // Wish this worked but I don't think it does on windows
+  BLEDevice::setMTU(64); // Wish this worked but I don't think it does on windows
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
 
@@ -224,12 +227,11 @@ void setup()
   pServer->getAdvertising()->setScanResponse(true);
   pServer->getAdvertising()->start();
 
-  vibConf.setBytes((uint8_t *)&vibConfStart, 8);
-
   test1.setValue(1.0);
   test3.setValue(0.0);
-  velo1.setValue(0.0);
+  velo1.setBytes((uint8_t*)veloReadings, 4 * 20);
   velo2.setValue(0.0);
+  vibConf.setBytes((uint8_t*)vibeSettings, sizeof(vibeSettings));
 
   vibConf.notify();
   velo1.notify();
@@ -265,7 +267,6 @@ void setup()
   timerAttachInterrupt(timer, &TimerHandler0, true);
   timerAlarmWrite(timer, 500, true);
   timerAlarmEnable(timer);
-  delay(15000); // FIXME: AAAAHHH
 }
 
 int lastLoop = 0;
@@ -282,11 +283,13 @@ void loop()
     {
       test1.setValue(currentReading / 4096.0);
       test1.notify();
-      // velo1.setValue((float)65.7 * powf(analogReadMilliVolts(velo0pin) / 1000.0, -1.35));
+      velo1.setBytes((uint8_t*)veloReadings, 4 * 20);
       velo1.notify();
       // velo2.setValue((float)65.7 * powf(analogReadMilliVolts(velo1pin) / 1000.0, -1.35));
       velo2.notify();
       test3.notify();
+      preferences.putBytes("vibConf", vibConf.getData(), vibConf.byteCount);
+      vibConf.setBytes((uint8_t*)vibeSettings, sizeof(vibeSettings));
       vibConf.notify();
       lastNotifyTime = millis();
     }
@@ -625,14 +628,12 @@ int doBrian(bool debug_prints)
 
 long vsread()
 {
-  for (int i = 0; i < sizeof(veloAddrs) / sizeof(int); i++)
-  {
-    veloReadings[i][1] = veloReadings[i][0] - veloReadings[i][1];
-    veloReadings[i][0] = muxedRead(0, veloAddrs[i]);
-    vTaskExitCritical(&timerMux);
+
+  for(int i = 0; i < sizeof(veloAddrs)/sizeof(int); i++) {
+    veloReadings[i][1] = (float)(veloReadings[i][0] -  veloReadings[i][1]);
+    veloReadings[i][0] = (float)65.7 * powf(muxedReadVolts(0, i), -1.35);
   }
-  long time = millis();
-  return time;
+  return micros();
 }
 
 long hRead()
@@ -667,4 +668,23 @@ int muxedRead(int mux, int pin)
   }
   vTaskExitCritical(&timerMux);
   return val;
+}
+
+float muxedReadVolts(int mux, int pin) {
+  int val;
+  vTaskEnterCritical(&timerMux);
+  if(mux == 0) {
+    digitalWrite(mux0Pin2, pin >> 2 & 1);
+    digitalWrite(mux0Pin1, pin >> 1 & 1);
+    digitalWrite(mux0Pin0, pin & 1);
+    val = analogReadMilliVolts(mux0readPin);
+  }
+  else if(mux == 1){
+    digitalWrite(mux0Pin2, pin >> 2 & 1);
+    digitalWrite(mux0Pin1, pin >> 1 & 1);
+    digitalWrite(mux0Pin0, pin & 1);
+    val = analogReadMilliVolts(mux1readPin);
+  }
+  vTaskExitCritical(&timerMux);
+  return val/1000.0;
 }
