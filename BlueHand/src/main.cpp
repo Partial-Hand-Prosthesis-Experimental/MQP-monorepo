@@ -94,19 +94,22 @@ class MyServerCallbacks : public BLEServerCallbacks
 Preferences preferences;
 
 // Headers
-int doBrian(bool debug_prints);
+float hallPos(bool debug_prints);
+void velostatHandler(bool debug_prints);
+
 void calib_switch();
 float adc2v(int adc_val);
-void velostatHandler();
 long vsRead();
 long hRead();
 int muxedRead(int mux, int pin);
+
+bool get_vs_calib_button();
+bool get_hall_calib_button();
 
 // Velostat Variables
 Haptics haptics(2);
 int veloAddrs[5] = {0, 1, 2, 3, 4};
 
-// state enum
 float veloReadings[5][2] = {
     {0, 0},
     {0, 0},
@@ -137,31 +140,42 @@ const int Hall_4_Pin = 15;
 const int Hall_5_Pin = 14;
 const int Hall_6_Pin = 4;
 
-// States
+// TODO refactor old button states
 int buttonState = 0;
 int buttonState2 = 0;
 int calib_button_push = 0;
+
+// States
 enum State
 {
   standby,
   calibration,
-  motoring
+  working
 };
-// State s = standby;
-State s = calibration;
+
+State hall_s = standby;
+State velo_s = standby;
 
 // Global Consts
 const int sensor_num = 6;
 const int interval_duration = 2000; // ms
-const int intervals = 13;           // 13 is max memorywise
+const int intervals = 8;            // 13 is max memorywise
 const int samples_per_interval = 125;
-const int time_per_sample = interval_duration / samples_per_interval;
+const int hall_time_per_sample = interval_duration / samples_per_interval;
 const int calib_duration = interval_duration * intervals;
 const int total_samples = intervals * samples_per_interval;
-float averaged_data[samples_per_interval][sensor_num] = {0};
+
+// float averaged_data[samples_per_interval][sensor_num] = {0};
+
+// time per vs sample
+const int vs_time_per_sample = 10;
+// time for vs calibration period
+const int vs_calib_duration = 60000; // 1 minute (?)
+const int total_vs_samples = vs_calib_duration / vs_time_per_sample;
 
 // GLobal Vars
-int calib_i = 0;
+int hall_calib_i = 0;
+int vs_calib_i = 0;
 
 int hall_1 = 0;
 int hall_2 = 0;
@@ -180,7 +194,7 @@ unsigned long elapsed_time;
 // Kalman Filter
 float pos_noise = 0.01;
 float noise = .00875;
-SimpleKalmanFilter PosKalmanFilter(1, 1,pos_noise);
+SimpleKalmanFilter PosKalmanFilter(1, 1, pos_noise);
 SimpleKalmanFilter Hall1KalmanFilter(1, 1, noise);
 SimpleKalmanFilter Hall2KalmanFilter(1, 1, noise);
 SimpleKalmanFilter Hall3KalmanFilter(1, 1, noise);
@@ -257,7 +271,7 @@ void setup()
     hall_6 = Hall6KalmanFilter.updateEstimate(analogRead(Hall_6_Pin));
 
     init_i++;
-    delay(time_per_sample);
+    delay(hall_time_per_sample);
   } while (init_i < 20);
 
   // Setup timer
@@ -336,7 +350,7 @@ void loop()
     // }
   }
 
-  int pos = doBrian(false);
+  int pos = hallPos(false);
 
   lastLoop = micros();
 }
@@ -367,13 +381,13 @@ float adc2v(int adc_val)
   return voltage;
 }
 
-void calib_switch()
+void hall_calib_switch()
 {
-  Serial.println("switching to calibration");
-  s = calibration;
+  Serial.println("Switching to hall sensor calibration.");
+  hall_s = calibration;
   start_time = millis();
   last_time = millis();
-  calib_i = 0;
+  hall_calib_i = 0;
 
   digitalWrite(LED_pin, HIGH);
   delay(interval_duration * .05);
@@ -391,23 +405,13 @@ void calib_switch()
   delay(interval_duration * .45);
 }
 
-int doBrian(bool debug_prints)
+float hallPos(bool debug_prints)
 {
-  static unsigned long lastTime = micros();
-  // if (micros() - lastTime > 2000000)
-  // {
-  //   Serial.print("Brian Interval: ");
-  //   Serial.println(micros() - lastTime);
-  //   lastTime = micros();
-  // }
-
-  // long unsigned summeded_data[samples_per_interval][6];
-
-  switch (s)
+  switch (hall_s)
   {
   case standby:
     Serial.println("standby");
-    calib_button_push = digitalRead(calib_button_pin);
+    calib_button_push = get_hall_calib_button();
     if (calib_button_push)
     {
       if (debug_prints)
@@ -420,21 +424,23 @@ int doBrian(bool debug_prints)
 
   case calibration:
     // calibrate, storing sum in averaged_data
-    if (calib_i < (samples_per_interval * intervals))
+    if (vs_calib_i < (samples_per_interval * intervals))
     {
       // delay sampling to achive desired rate
-      if (millis() < (elapsed_time + time_per_sample))
+      if ((millis() - start_time) < (elapsed_time + hall_time_per_sample))
       {
-        // Serial.print("delayed");
-        // delay(1);
+        if (debug_prints)
+        {
+          Serial.print("Hall reading delayed");
+        }
       }
       else
       {
-        bool opening = (int)floor((calib_i) / samples_per_interval) % 2 == 0;
+        bool opening = (int)floor((hall_calib_i) / samples_per_interval) % 2 == 0;
         int pos = 0;
         if (opening)
         {
-          pos = calib_i % samples_per_interval;
+          pos = hall_calib_i % samples_per_interval;
           digitalWrite(LED_pin, HIGH);
           Serial.print("Calibrating at pos ");
           Serial.print(pos);
@@ -444,7 +450,7 @@ int doBrian(bool debug_prints)
         }
         else
         { // count position backwards if closing
-          pos = (samples_per_interval - 1) - calib_i % samples_per_interval;
+          pos = (samples_per_interval - 1) - hall_calib_i % samples_per_interval;
           digitalWrite(LED_pin, LOW);
           Serial.print("Calibrating at pos ");
           Serial.print(pos);
@@ -457,16 +463,6 @@ int doBrian(bool debug_prints)
         elapsed_time = current_time - start_time;
 
         hRead();
-        // myKNN.addExample({hall_1, hall_2, hall_3, hall_4, hall_5, hall_6}, pos);
-
-        // sum readings with respect to position
-        // averaged_data[pos][0] += hall_1 / intervals;
-        // averaged_data[pos][1] += hall_2 / intervals;
-        // averaged_data[pos][2] += hall_3 / intervals;
-        // averaged_data[pos][3] += hall_4 / intervals;
-        // averaged_data[pos][4] += hall_5 / intervals;
-        // averaged_data[pos][5] += hall_6 / intervals;
-
         float input[] = {adc2v(hall_1), adc2v(hall_2), adc2v(hall_3), adc2v(hall_4), adc2v(hall_5), adc2v(hall_6)};
         myKNN.addExample(input, pos);
 
@@ -475,7 +471,7 @@ int doBrian(bool debug_prints)
           Serial.print("Elapsed_time: ");
           Serial.print(elapsed_time);
           Serial.print(". calib_i: ");
-          Serial.print(calib_i);
+          Serial.print(hall_calib_i);
           Serial.print(". opening: ");
           Serial.print(opening);
           Serial.print(". Position: ");
@@ -494,36 +490,10 @@ int doBrian(bool debug_prints)
           Serial.print(", ");
           Serial.println(hall_6);
 
-          // Serial.print("Current reading/intervals: ");
-          // Serial.print(hall_1 / intervals);
-          // Serial.print(", ");
-          // Serial.print(hall_2 / intervals);
-          // Serial.print(", ");
-          // Serial.print(hall_3 / intervals);
-          // Serial.print(", ");
-          // Serial.print(hall_4 / intervals);
-          // Serial.print(", ");
-          // Serial.print(hall_5 / intervals);
-          // Serial.print(", ");
-          // Serial.println(hall_6 / intervals);
-
-          // Serial.print("Current averaged_data: ");
-          // Serial.print(averaged_data[pos][0]);
-          // Serial.print(", ");
-          // Serial.print(averaged_data[pos][1]);
-          // Serial.print(", ");
-          // Serial.print(averaged_data[pos][2]);
-          // Serial.print(", ");
-          // Serial.print(averaged_data[pos][3]);
-          // Serial.print(", ");
-          // Serial.print(averaged_data[pos][4]);
-          // Serial.print(", ");
-          // Serial.println(averaged_data[pos][5]);
-
           delay(1);
         }
 
-        calib_i++;
+        hall_calib_i++;
       }
     }
     else
@@ -533,28 +503,6 @@ int doBrian(bool debug_prints)
         Serial.println("Making KNN");
       }
 
-      //
-      for (int b = 0; b < samples_per_interval; b++)
-      {
-        float input[] = {adc2v(averaged_data[b][0]), adc2v(averaged_data[b][1]), adc2v(averaged_data[b][2]), adc2v(averaged_data[b][3]), adc2v(averaged_data[b][4]), adc2v(averaged_data[b][5])};
-        // print average entri`es
-        if (debug_prints)
-        {
-          Serial.print("Average entry at position ");
-          Serial.print(b + 1);
-          Serial.print("/");
-          Serial.print(samples_per_interval);
-          Serial.print(": ");
-          for (int a = 0; a < sensor_num; a++)
-          {
-            Serial.print(input[a]);
-            Serial.print(", ");
-          }
-          Serial.println("");
-        }
-
-        // myKNN.addExample(averaged_data[b], b);
-      }
       Serial.println("Done calibrating.");
       if (debug_prints)
       {
@@ -563,12 +511,12 @@ int doBrian(bool debug_prints)
         Serial.println();
         // delay(1000);
       }
-      s = motoring; // TODO make motoring
+      hall_s = working; // TODO make motoring
       Serial.print("Calibrated, now returning estimated pos. ");
       digitalWrite(LED_pin, LOW);
       break;
     }
-  case motoring:
+  case working:
     hRead();
 
     // K Nearest Neighbor
@@ -576,7 +524,7 @@ int doBrian(bool debug_prints)
     float input[] = {adc2v(hall_1), adc2v(hall_2), adc2v(hall_3), adc2v(hall_4), adc2v(hall_5), adc2v(hall_6)};
     int position = myKNN.classify(input, k);
     float confidence = myKNN.confidence();
-    PosKalmanFilter.setProcessNoise(pos_noise*confidence);
+    PosKalmanFilter.setProcessNoise(pos_noise * confidence);
     float estimated_pos = PosKalmanFilter.updateEstimate(position);
 
     if (debug_prints)
@@ -613,7 +561,7 @@ int doBrian(bool debug_prints)
     // delay(100);
     return target_pos;
 
-    calib_button_push = digitalRead(calib_button_pin);
+    calib_button_push = get_hall_calib_button();
     if (calib_button_push)
     {
       calib_switch();
@@ -621,6 +569,105 @@ int doBrian(bool debug_prints)
     break;
   }
   return 0;
+}
+
+void vs_calib_switch()
+{
+  Serial.println("Switching to hall sensor calibration.");
+  vs_s = calibration;
+  start_time = millis();
+  last_time = millis();
+  vs_calib_i = 0;
+
+  digitalWrite(LED_pin, HIGH);
+  delay(interval_duration * .05);
+  digitalWrite(LED_pin, LOW);
+  delay(interval_duration * .45);
+
+  digitalWrite(LED_pin, HIGH);
+  delay(interval_duration * .05);
+  digitalWrite(LED_pin, LOW);
+  delay(interval_duration * .45);
+
+  digitalWrite(LED_pin, HIGH);
+  delay(interval_duration * .05);
+  digitalWrite(LED_pin, LOW);
+  delay(interval_duration * .45);
+}
+
+void velostatHandler(bool debug_prints)
+{
+  switch (hall_s)
+  {
+  case standby:
+    if (debug_prints)
+    {
+      Serial.println("In standby.");
+    }
+    calib_button_push = get_vs_calib_button();
+    if (calib_button_push)
+    {
+      if (debug_prints)
+      {
+        Serial.println("PUSHED");
+      }
+      calib_switch();
+    }
+    break;
+
+  case calibration:
+    // calibrate, storing in KNN
+    if (vs_calib_i < (samples_per_interval * intervals))
+    {
+      // delay sampling to achive desired rate
+      if ((millis() - start_time) < (elapsed_time + vs_time_per_sample))
+      {
+        if (debug_prints)
+        {
+          Serial.print("vs reading delayed");
+        }
+      }
+      else
+      { // undelayed
+        vsread();
+        
+        vs_calib_i++;
+      }
+    }
+    else
+    {
+      Serial.print("Calibrated. ");
+      if (debug_prints)
+      {
+        Serial.print("Now updating vs globals. ");
+      }
+      Serial.println("");
+
+      hall_s = working; // TODO make motoring
+      digitalWrite(LED_pin, LOW);
+      break;
+    }
+  case working:
+
+    calib_button_push = get_vs_calib_button();
+    if (calib_button_push)
+    {
+      calib_switch();
+    }
+    break;
+  }
+}
+
+bool get_vs_calib_button()
+{
+  // TODO connect to web UI
+  return false;
+}
+
+bool get_hall_calib_button()
+{
+  // TODO connect to web UI
+  return false;
 }
 
 long vsread()
