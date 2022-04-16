@@ -16,7 +16,7 @@ Motor::Motor(int pinA1, int pinA2, volatile int* potReading, volatile int* curre
     _pid.setPID(0.005, 0.000005, 0.0001);
     _pid.setOutputLimits(-1.0, 1.0);
     _currentpid.reset();
-    _currentpid.setPID(1.5, 0.0001, 0.0);
+    _currentpid.setPID(5, 0.0001, 0.0);
     _currentpid.setOutputLimits(-65535, 65535.0);
 }
 

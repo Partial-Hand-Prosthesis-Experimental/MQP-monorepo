@@ -95,9 +95,9 @@ float adc2v(int adc_val);
 // Brian globals
 // TODO Fix all of these. All are from arduino nano
 // Pins
-const int buttonPin = 2;
-const int buttonPin2 = 3;
-const int calib_button_pin = 4; // D4
+const int buttonPin = 32;
+const int buttonPin2 = 34;
+const int calib_button_pin = 35; // D4
 // const int potPin = 1; we both used pot pin
 int LED_pin = 22; // esp32 onboard
 
@@ -231,20 +231,20 @@ void setup()
   } while (init_i < 20);
 
   // Setup timer
-  timer = timerBegin(1, 80, true);
+  timer = timerBegin(2, 80, true);
   timerAttachInterrupt(timer, &TimerHandler0, true);
   timerAlarmWrite(timer, 500, true);
   timerAlarmEnable(timer);
+  delay(15000); // FIXME: AAAAHHH
 }
 
 int lastLoop = 0;
 
 void loop()
 {
-  lastLoop = micros();
   if(micros() > lastLoop + 500)
   {
-    motor.position(map(test3.getFloat()*65535, 0, 65535, 250, 3900));
+    motor.position(map(test3.getFloat()*65535, 0, 65535, 500, 3900));
   }
   if (deviceConnected)
   {
@@ -307,6 +307,8 @@ void loop()
   }
 
   int pos = doBrian(false);
+
+  lastLoop = micros();
 }
 
 // Currently Runs at 20khz, see #define TIMER0_INTERVAL_US        50
