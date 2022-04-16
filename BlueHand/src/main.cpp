@@ -156,7 +156,7 @@ enum State
 };
 
 State hall_s = standby;
-State velo_s = standby;
+State vs_s = standby;
 
 // Global Consts
 const int sensor_num = 6;
@@ -626,7 +626,7 @@ void velostatHandler(bool debug_prints)
       }
       else
       { // undelayed
-        vsread();
+        vsRead();
         
         vs_calib_i++;
       }
