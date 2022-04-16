@@ -389,9 +389,10 @@ void loop()
   //   //   haptics.drv->go();
   //   // }
   // }
-  velostatHandler(false, false);
+  bool debug = true;
+  velostatHandler(debug, false);
 
-  int pos = hallPos(false);
+  int pos = hallPos(debug);
   // Serial.print("Position from Hall: ");
   // Serial.println(pos);
 
@@ -409,7 +410,6 @@ void IRAM_ATTR TimerHandler0()
   portEXIT_CRITICAL_ISR(&timerMux);
 }
 
-// Brian helper
 float adc2v(int adc_val)
 {
   float source_voltage = 4.3;
@@ -417,6 +417,7 @@ float adc2v(int adc_val)
   float voltage = (adc_val * source_voltage) / (resolution);
   return voltage;
 }
+
 
 void hall_calib_switch()
 {
@@ -440,7 +441,6 @@ void hall_calib_switch()
   digitalWrite(LED_pin, LOW);
   delay(interval_duration * .45);
 }
-
 float hallPos(bool debug_prints)
 {
   switch (hall_s)
@@ -636,7 +636,6 @@ void vs_calib_switch()
   digitalWrite(LED_pin, LOW);
   delay(interval_duration * .45);
 }
-
 void velostatHandler(bool debug_prints, bool diagonal)
 {
   switch (vs_s)
