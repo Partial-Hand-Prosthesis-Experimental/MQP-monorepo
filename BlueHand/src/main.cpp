@@ -212,14 +212,24 @@ unsigned long hall_old_start_time;
 
 // Kalman Filter
 float pos_noise = 0.01;
-float noise = .00875;
+float hall_noise = .00875;
+float vs_noise = .02;
 SimpleKalmanFilter PosKalmanFilter(1, 1, pos_noise);
-SimpleKalmanFilter Hall1KalmanFilter(1, 1, noise);
-SimpleKalmanFilter Hall2KalmanFilter(1, 1, noise);
-SimpleKalmanFilter Hall3KalmanFilter(1, 1, noise);
-SimpleKalmanFilter Hall4KalmanFilter(1, 1, noise);
-SimpleKalmanFilter Hall5KalmanFilter(1, 1, noise);
-SimpleKalmanFilter Hall6KalmanFilter(1, 1, noise);
+SimpleKalmanFilter Hall1KalmanFilter(1, 1, hall_noise);
+SimpleKalmanFilter Hall2KalmanFilter(1, 1, hall_noise);
+SimpleKalmanFilter Hall3KalmanFilter(1, 1, hall_noise);
+SimpleKalmanFilter Hall4KalmanFilter(1, 1, hall_noise);
+SimpleKalmanFilter Hall5KalmanFilter(1, 1, hall_noise);
+SimpleKalmanFilter Hall6KalmanFilter(1, 1, hall_noise);
+
+SimpleKalmanFilter vs1KalmanFilter(1, 1, vs_noise);
+SimpleKalmanFilter vs2KalmanFilter(1, 1, vs_noise);
+SimpleKalmanFilter vs3KalmanFilter(1, 1, vs_noise);
+SimpleKalmanFilter vs4KalmanFilter(1, 1, vs_noise);
+SimpleKalmanFilter vs5KalmanFilter(1, 1, vs_noise);
+
+SimpleKalmanFilter vs_kalmans[vs_sen_num] = {vs1KalmanFilter, vs2KalmanFilter, vs3KalmanFilter, vs4KalmanFilter, vs5KalmanFilter};
+
 // KNN Clasifier
 KNNClassifier myKNN(sensor_num); // same as sensor_num
 // GMM Clasifier
@@ -287,13 +297,8 @@ void setup()
   int init_i = 0;
   do
   {
-    hall_1 = Hall1KalmanFilter.updateEstimate(analogRead(Hall_1_Pin));
-    hall_2 = Hall2KalmanFilter.updateEstimate(analogRead(Hall_2_Pin));
-    hall_3 = Hall3KalmanFilter.updateEstimate(analogRead(Hall_3_Pin));
-    hall_4 = Hall4KalmanFilter.updateEstimate(analogRead(Hall_4_Pin));
-    hall_5 = Hall5KalmanFilter.updateEstimate(analogRead(Hall_5_Pin));
-    hall_6 = Hall6KalmanFilter.updateEstimate(analogRead(Hall_6_Pin));
-
+    hRead();
+    vsRead();
     init_i++;
     delay(hall_time_per_sample);
   } while (init_i < 20);
@@ -303,8 +308,6 @@ void setup()
   // timerAttachInterrupt(timer, &TimerHandler0, true);
   // timerAlarmWrite(timer, 500, true);
   // timerAlarmEnable(timer);
-
-  //[data sample len][force, force']--------------------------------make smaller to fix memory issues
 }
 
 long lastLoop = 0;
@@ -388,7 +391,7 @@ void loop()
   // }
   velostatHandler(false, false);
 
-  int pos = hallPos(true);
+  int pos = hallPos(false);
   // Serial.print("Position from Hall: ");
   // Serial.println(pos);
 
@@ -721,7 +724,7 @@ void velostatHandler(bool debug_prints, bool diagonal)
     vsRead();
     for (int i = 0; i < vs_sen_num; i++)
     {
-      double d[] = {(double)veloReadings[i][0], (double)veloReadings[i][0]};
+      double d[] = {(double)veloReadings[i][0], (double)veloReadings[i][1]};
 
       int classification = clusterer.Classify(d);
 
@@ -742,6 +745,15 @@ void velostatHandler(bool debug_prints, bool diagonal)
     for (int i = 0; i < vs_sen_num; i++)
     {
       Serial.print(outputStates[i][0]);
+      Serial.print(", ");
+    }
+    Serial.println("");
+
+    Serial.print("Clasifications likklyhood: ");
+    for (int i = 0; i < vs_sen_num; i++)
+    {
+      double d[] = {(double)veloReadings[i][0], (double)veloReadings[i][1]};
+      Serial.print(clusterer.Calculate_Likelihood(d));
       Serial.print(", ");
     }
     Serial.println("");
@@ -769,11 +781,12 @@ bool get_hall_calib_button()
 
 long vsRead()
 {
-
+  static float lastVelo[5] = {0, 0, 0, 0, 0};
   for (int i = 0; i < sizeof(veloAddrs) / sizeof(int); i++)
   {
+    lastVelo[i] = veloReadings[i][0];
+    veloReadings[i][0] = vs_kalmans[i].updateEstimate((float)65.7 * powf(muxedReadVolts(0, i), -1.35)); //V to g
     veloReadings[i][1] = (float)(veloReadings[i][0] - veloReadings[i][1]);
-    veloReadings[i][0] = (float)65.7 * powf(muxedReadVolts(0, i), -1.35);
   }
   return update_elapsed_time();
 }
@@ -842,5 +855,6 @@ float muxedReadVolts(int mux, int pin)
     val = analogReadMilliVolts(mux1readPin);
   }
   vTaskExitCritical(&timerMux);
+
   return val / 1000.0;
 }
