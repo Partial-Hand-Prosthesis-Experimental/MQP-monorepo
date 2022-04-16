@@ -24,7 +24,6 @@
 #include <Arduino_KNN.h>
 #include <GMM.h>
 #include <Wire.h>
-#include <TinyPICO.h>
 #include "Motor.h"
 #include "Haptics.h"
 #include "Preferences.h"
@@ -64,7 +63,6 @@ portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 hw_timer_t *timer = NULL;
 
 Motor motor(25, 33, &sharedPotReading, &sharedCurrentReading);
-TinyPICO tp = TinyPICO();
 
 // See the following for generating UUIDs:
 // https://www.uuidgenerator.net/
@@ -157,7 +155,6 @@ const int buttonPin = 32;
 const int buttonPin2 = 34;
 const int calib_button_pin = 35; // D4
 // const int potPin = 1; we both used pot pin
-int LED_pin = 2; // esp32 onboard
 
 const int Hall_1_Pin = 36; // Changed by drew
 const int Hall_2_Pin = 26;
@@ -211,6 +208,7 @@ long hall_elapsed_time;
 long elapsed_time;
 long vs_old_start_time;
 long hall_old_start_time;
+int sample_rate_threshold = 10; // ms
 
 // Kalman Filter
 float pos_noise = 0.01;
@@ -293,7 +291,6 @@ void setup()
   pinMode(buttonPin, INPUT);
   pinMode(buttonPin2, INPUT);
   pinMode(calib_button_pin, INPUT);
-  pinMode(LED_pin, OUTPUT);
 
   // Kalman Filter Setup
   int init_i = 0;
@@ -426,21 +423,6 @@ void hall_calib_switch()
   hall_s = calibration;
   hall_sample_time = millis();
   hall_calib_i = 0;
-
-  digitalWrite(LED_pin, HIGH);
-  delay(interval_duration * .05);
-  digitalWrite(LED_pin, LOW);
-  delay(interval_duration * .45);
-
-  digitalWrite(LED_pin, HIGH);
-  delay(interval_duration * .05);
-  digitalWrite(LED_pin, LOW);
-  delay(interval_duration * .45);
-
-  digitalWrite(LED_pin, HIGH);
-  delay(interval_duration * .05);
-  digitalWrite(LED_pin, LOW);
-  delay(interval_duration * .45);
 }
 float hallPos(bool debug_prints)
 {
@@ -474,21 +456,24 @@ float hallPos(bool debug_prints)
         hall_sample_time = hRead();
         if (debug_prints)
         {
-          Serial.print(" actual interval: ");
-          Serial.print(hall_sample_time);
+
           Serial.print(" actual interval: ");
           Serial.print(hall_sample_time - hall_old_start_time);
-          Serial.print(" actual interval: ");
-          Serial.print((hall_old_start_time));
           Serial.print(" desired interval: ");
           Serial.println(hall_time_per_sample);
         }
+        int diff = hall_sample_time - hall_old_start_time;
+        if (diff > sample_rate_threshold)
+        {
+          Serial.print("Large sample rate difference detected. Diference of ");
+          Serial.println(diff);
+        }
+
         bool opening = (int)floor((hall_calib_i) / samples_per_interval) % 2 == 0;
         int pos = 0;
         if (opening)
         {
           pos = hall_calib_i % samples_per_interval;
-          digitalWrite(LED_pin, HIGH);
           Serial.print("Calibrating at pos ");
           Serial.print(pos);
           Serial.print("/");
@@ -498,13 +483,13 @@ float hallPos(bool debug_prints)
         else
         { // count position backwards if closing
           pos = (samples_per_interval - 1) - hall_calib_i % samples_per_interval;
-          digitalWrite(LED_pin, LOW);
           Serial.print("Calibrating at pos ");
           Serial.print(pos);
           Serial.print("/");
           Serial.print(samples_per_interval);
           Serial.println(" while closing");
         }
+
 
         float input[] = {adc2v(hall_1), adc2v(hall_2), adc2v(hall_3), adc2v(hall_4), adc2v(hall_5), adc2v(hall_6)};
         myKNN.addExample(input, pos);
@@ -557,7 +542,6 @@ float hallPos(bool debug_prints)
       }
       hall_s = working; // TODO make motoring
       Serial.print("Calibrated, now returning estimated pos. ");
-      digitalWrite(LED_pin, LOW);
     }
 
     break;
@@ -631,20 +615,7 @@ void vs_calib_switch()
   for (int i = 0; i < total_vs_data; i++)
     vs_data[i] = (double *)malloc(2 * sizeof(double));
 
-  digitalWrite(LED_pin, HIGH);
-  delay(interval_duration * .05);
-  digitalWrite(LED_pin, LOW);
-  delay(interval_duration * .45);
-
-  digitalWrite(LED_pin, HIGH);
-  delay(interval_duration * .05);
-  digitalWrite(LED_pin, LOW);
-  delay(interval_duration * .45);
-
-  digitalWrite(LED_pin, HIGH);
-  delay(interval_duration * .05);
-  digitalWrite(LED_pin, LOW);
-  delay(interval_duration * .45);
+;
 }
 void velostatHandler(bool debug_prints, bool diagonal)
 {
@@ -726,7 +697,6 @@ void velostatHandler(bool debug_prints, bool diagonal)
       free(vs_data);
 
       vs_s = working; // TODO make motoring
-      digitalWrite(LED_pin, LOW);
     }
     break;
   case working:
