@@ -32,6 +32,15 @@ bool deviceConnected = false;
 bool oldDeviceConnected = false;
 long lastNotifyTime = 0;
 
+int mux0readPin = 13;
+int mux0Pin0 = 25;
+int mux0Pin1 = 26;
+int mux0Pin2 = 27;
+
+int mux1readPin = 32;
+int mux1Pin0 = 15;
+int mux1Pin1 = 14;
+int mux1Pin2 = 4;
 
 int potPin = 26;
 int currentPin = 27;
@@ -92,9 +101,11 @@ float adc2v(int adc_val);
 
 void velostatHandler();
 long vsRead();
+int muxedRead(int mux, int pin);
 
 // Velostat Variables
 Haptics haptics(2);
+int veloAddrs[5] = {0, 1, 2, 3, 4};
 
 // state enum
 float veloReadings[5][2] = {
@@ -274,9 +285,9 @@ void loop()
     {
       test1.setValue(currentReading/4096.0);
       test1.notify();
-      velo1.setValue((float)65.7 * powf(analogReadMilliVolts(velo0pin) / 1000.0, -1.35));
+      //velo1.setValue((float)65.7 * powf(analogReadMilliVolts(velo0pin) / 1000.0, -1.35));
       velo1.notify();
-      velo2.setValue((float)65.7 * powf(analogReadMilliVolts(velo1pin) / 1000.0, -1.35));
+      //velo2.setValue((float)65.7 * powf(analogReadMilliVolts(velo1pin) / 1000.0, -1.35));
       velo2.notify();
       test3.notify();
       vibConf.notify();
@@ -316,16 +327,16 @@ void loop()
       haptics.drv->go();
     }
 
-    if ((float)65.7 * powf(analogReadMilliVolts(velo0pin) / 1000.0, -1.35) > 300)
-    {
-      haptics.vibeselect(0);
-      haptics.drv->go();
-    }
-    if ((float)65.7 * powf(analogReadMilliVolts(velo1pin) / 1000.0, -1.35) > 300)
-    {
-      haptics.vibeselect(1);
-      haptics.drv->go();
-    }
+    // if ((float)65.7 * powf(analogReadMilliVolts(velo0pin) / 1000.0, -1.35) > 300)
+    // {
+    //   haptics.vibeselect(0);
+    //   haptics.drv->go();
+    // }
+    // if ((float)65.7 * powf(analogReadMilliVolts(velo1pin) / 1000.0, -1.35) > 300)
+    // {
+    //   haptics.vibeselect(1);
+    //   haptics.drv->go();
+    // }
   }
 
   int pos = doBrian(false);
@@ -337,6 +348,11 @@ void loop()
 void IRAM_ATTR TimerHandler0()
 {
   portENTER_CRITICAL_ISR(&timerMux);
+
+  for(int i = 0; i < sizeof(veloAddrs)/sizeof(int); i++) {
+    veloReadings[i][1] = veloReadings[i][0] -  veloReadings[i][1];
+    veloReadings[i][0] = analogRead(veloAddrs[i]);
+  }
   currentReading = analogRead(currentPin);
   // Since jank electronics pushes up the gnd for the motor system, the reading 
   // would naturally fall by the voltage dropped by the current sense resistor
@@ -625,4 +641,32 @@ int doBrian(bool debug_prints)
     break;
   }
   return 0;
+}
+
+void vsread() {
+
+  for(int i = 0; i < sizeof(veloAddrs)/sizeof(int); i++) {
+    veloReadings[i][1] = veloReadings[i][0] -  veloReadings[i][1];
+    veloReadings[i][0] = muxedRead(0, veloAddrs[i]);
+    vTaskExitCritical(&timerMux);
+  }
+}
+
+int muxedRead(int mux, int pin) {
+  int val;
+  vTaskEnterCritical(&timerMux);
+  if(mux == 0) {
+    digitalWrite(mux0Pin2, pin >> 2 & 1);
+    digitalWrite(mux0Pin1, pin >> 1 & 1);
+    digitalWrite(mux0Pin0, pin & 1);
+    val = analogRead(mux0readPin);
+  }
+  else if(mux == 1){
+    digitalWrite(mux0Pin2, pin >> 2 & 1);
+    digitalWrite(mux0Pin1, pin >> 1 & 1);
+    digitalWrite(mux0Pin0, pin & 1);
+    val = analogRead(mux1readPin);
+  }
+  vTaskExitCritical(&timerMux);
+  return val;
 }
