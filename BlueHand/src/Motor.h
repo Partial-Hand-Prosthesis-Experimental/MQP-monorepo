@@ -10,6 +10,7 @@ class Motor {
         Motor (int pinA1, int pinA2, volatile int* potReading, volatile int* currentReading, BLEProp* prop);
         void speed(float_t speed);
         void position(float_t position);
+        void position(float_t position, float_t maxCurrent);
         void current(float_t current, float_t maxCurrent);
         BLEProp* _prop;
     private:

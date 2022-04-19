@@ -53,9 +53,13 @@ void Motor::current(float_t current, float_t maxCurrent) {
     }
 }
 
-void Motor::position(float_t position) {
+void Motor::position(float_t pos) {
+    Motor::position(pos, 0.05);
+}
+
+void Motor::position(float_t position, float_t maxCurrent) {
     // sensor, target
     float_t out = (float_t)_pid.getOutput(*_potReading, position);
-    current(out, 0.12); // TODO: make max current 0.9*the max voltage dropped by the sense resistor
+    current(out, maxCurrent); // TODO: make max current 0.9*the max voltage dropped by the sense resistor
     // Sense resistors voltage is a function of the battery voltage and the motor resistance + sense resistance
 }

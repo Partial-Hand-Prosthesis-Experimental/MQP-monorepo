@@ -86,7 +86,6 @@ BLEProp test3(SERVICE_UUID_TEST3, CHARACTERISTIC_UUID_TEST3, BLECharacteristic::
 BLEProp velo(SERVICE_UUID_VELO, CHARACTERISTIC_UUID_VELO, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4 * 20);
 
 BLEProp velo2(SERVICE_UUID_VELO2, CHARACTERISTIC_UUID_VELO2, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
-BLEProp vibConf(SERVICE_UUID_VIBCONF, CHARACTERISTIC_UUID_VIBCONF, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, sizeof(uint8_t) * 15);
 
 class MyServerCallbacks : public BLEServerCallbacks
 {
@@ -138,7 +137,10 @@ int outputStates[vs_sen_num][1] = {
     {0},
     {0},
     {0}};
-uint8_t vibeSettings[vs_sen_num][3];
+
+uint8_t vibeSettings[vs_sen_num][3][3];
+
+BLEProp vibConf(SERVICE_UUID_VIBCONF, CHARACTERISTIC_UUID_VIBCONF, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, sizeof(vibeSettings));
 
 // TODO increase sample duration
 const int vs_time_per_sample = 20;   // time per vs sample
@@ -243,12 +245,25 @@ void setup()
   preferences.begin("vibro", false);
   if (!preferences.isKey("vibConf"))
   {
-    uint8_t initialConfig[5][3] = {
-        {0, 47, 51},
-        {0, 47, 51},
-        {0, 47, 51},
-        {0, 47, 51},
-        {0, 47, 51}};
+    Serial.println("No vibConf key found. Creating...");
+    uint8_t initialConfig[vs_sen_num][3][3];
+    for (int i = 0; i < vs_sen_num; i++)
+    {
+      initialConfig[i][0][0] = 0;
+      initialConfig[i][0][1] = 0;
+      initialConfig[i][0][2] = 0;
+
+      initialConfig[i][1][0] = 0;
+      initialConfig[i][1][1] = 47;
+      initialConfig[i][1][2] = 48;
+
+      initialConfig[i][2][0] = 0;
+      initialConfig[i][2][1] = 50;
+      initialConfig[i][2][2] = 51;
+    }
+    Serial.print("Generated ");
+    Serial.print(sizeof(initialConfig));
+    Serial.println(" bytes");
     preferences.putBytes("vibConf", initialConfig, sizeof(initialConfig));
   }
   preferences.getBytes("vibConf", vibeSettings, sizeof(vibeSettings));
@@ -273,7 +288,7 @@ void setup()
 
   test1.setValue(1.0);
 
-  test3.setValue(0.5);
+  test3.setValue(0.2); // Start with low current limit to prevent windup during calibration
   velo.setBytes((uint8_t *)veloReadings, 4 * 20);
 
   velo2.setValue(0.0);
@@ -313,87 +328,59 @@ long lastLoop = 0;
 
 void loop()
 {
-  // vTaskEnterCritical(&timerMux);
-  // sharedPotReading = (int)potReading;
-  // sharedCurrentReading = (int)currentReading;
-  // vTaskExitCritical(&timerMux);
+  bool debug = false;
+  sharedCurrentReading = analogRead(currentPin);
+  sharedPotReading = analogRead(potPin) + sharedCurrentReading;
 
-  // sharedCurrentReading = analogRead(currentPin);
-  // sharedPotReading = analogRead(potPin) + sharedCurrentReading;
-
-  // if (micros() > lastLoop + 1000)
-  // {
-  //   motor.position(test3.getFloat() * (3800 - 200) + 200);
-  //   lastLoop = micros();
-  // }
-  // if (deviceConnected)
-  // {
-  //   if (lastNotifyTime + 10 < millis())
-  //   {
-  //     test1.setValue(sharedPotReading / 4096.0);
-  //     test1.notify();
-
-  //     velo.setBytes((uint8_t *)veloReadings, 4 * 20);
-  //     velo.notify();
-  //     // velo2.setValue((float)65.7 * powf(analogReadMilliVolts(velopin) / 1000.0, -1.35));
-  //     velo2.notify();
-  //     test3.notify();
-  //     preferences.putBytes("vibConf", vibConf.getData(), vibConf.byteCount);
-  //     vibConf.setBytes((uint8_t *)vibeSettings, sizeof(vibeSettings));
-  //     vibConf.notify();
-  //     lastNotifyTime = millis();
-  //   }
-  // }
-
-  // // disconnecting
-  // if (!deviceConnected && oldDeviceConnected)
-  // {
-  //   delay(500); // give the bluetooth stack the chance to get things ready
-  //   pServer->disconnect(0);
-  //   pServer->getAdvertising()->setScanResponse(true);
-  //   pServer->startAdvertising(); // restart advertising
-  //   Serial.println("start advertising");
-  //   oldDeviceConnected = deviceConnected;
-  //   Serial.println("Client Disconnected");
-  // }
-  // // connecting
-  // if (deviceConnected && !oldDeviceConnected)
-  // {
-  //   // do stuff here on connecting
-  //   oldDeviceConnected = deviceConnected;
-  //   Serial.println("Client Connected");
-  // }
-
-  // for (int i = 0; i < 3; i++)
-  // {
-  //   if (vibConf.getData()[2 + i] == 1)
-  //   {
-  //     uint8_t *vibUpdate = vibConf.getData();
-  //     vibUpdate[2 + i] = 0;
-  //     vibConf.setBytes(vibUpdate, 8);
-  //     haptics.vibeselect(i);
-  //     Serial.print("go on haptic #");
-  //     Serial.println(i);
-  //     haptics.drv->go();
-  //   }
-
-  //   // if ((float)65.7 * powf(analogReadMilliVolts(velo0pin) / 1000.0, -1.35) > 300)
-  //   // {
-  //   //   haptics.vibeselect(0);
-  //   //   haptics.drv->go();
-  //   // }
-  //   // if ((float)65.7 * powf(analogReadMilliVolts(velopin) / 1000.0, -1.35) > 300)
-  //   // {
-  //   //   haptics.vibeselect(1);
-  //   //   haptics.drv->go();
-  //   // }
-  // }
-  bool debug = true;
-  velostatHandler(debug, false);
+  if (micros() > lastLoop + 1000)
+  {
+    float target = 0.5 * (sin(2 * PI * millis() / (10000.0)) + 1);
+    motor.position(target * (3800 - 350) + 350, constrain(test3.getFloat() * 0.2, 0, 0.2));
+    lastLoop = micros();
+  }
 
   int pos = hallPos(debug);
-  // Serial.print("Position from Hall: ");
-  // Serial.println(pos);
+  
+  if (deviceConnected)
+  {
+    if (lastNotifyTime + 10 < millis())
+    {
+      test1.setValue(pos);
+      test1.notify();
+
+      velo.setBytes((uint8_t *)veloReadings, 4 * 20);
+      velo.notify();
+      // velo2.setValue((float)65.7 * powf(analogReadMilliVolts(velopin) / 1000.0, -1.35));
+      velo2.notify();
+      test3.notify();
+      preferences.putBytes("vibConf", vibConf.getData(), vibConf.byteCount);
+      preferences.getBytes("vibConf", vibeSettings, sizeof(vibeSettings));
+      vibConf.setBytes((uint8_t *)vibeSettings, sizeof(vibeSettings));
+      vibConf.notify();
+      lastNotifyTime = millis();
+    }
+  }
+
+  // disconnecting
+  if (!deviceConnected && oldDeviceConnected)
+  {
+    delay(500); // give the bluetooth stack the chance to get things ready
+    pServer->disconnect(0);
+    pServer->getAdvertising()->setScanResponse(true);
+    pServer->startAdvertising(); // restart advertising
+    Serial.println("start advertising");
+    oldDeviceConnected = deviceConnected;
+    Serial.println("Client Disconnected");
+  }
+  // connecting
+  if (deviceConnected && !oldDeviceConnected)
+  {
+    // do stuff here on connecting
+    oldDeviceConnected = deviceConnected;
+    Serial.println("Client Connected");
+  }
+
+  velostatHandler(debug, false);
 
   // delay(1);
 }
@@ -419,11 +406,12 @@ float adc2v(int adc_val)
 
 void hall_calib_switch()
 {
-  Serial.println("Switching to hall sensor calibration.");
+  // Serial.println("Switching to hall sensor calibration.");
   hall_s = calibration;
   hall_sample_time = millis();
   hall_calib_i = 0;
 }
+
 float hallPos(bool debug_prints)
 {
   switch (hall_s)
@@ -474,20 +462,27 @@ float hallPos(bool debug_prints)
         if (opening)
         {
           pos = hall_calib_i % samples_per_interval;
-          Serial.print("Calibrating at pos ");
-          Serial.print(pos);
-          Serial.print("/");
-          Serial.print(samples_per_interval);
-          Serial.println(" while opening");
+        if (debug_prints)
+          {
+            Serial.print("Calibrating at pos ");
+            Serial.print(pos);
+            Serial.print("/");
+            Serial.print(samples_per_interval);
+            Serial.println(" while opening");
+          }
         }
         else
         { // count position backwards if closing
           pos = (samples_per_interval - 1) - hall_calib_i % samples_per_interval;
-          Serial.print("Calibrating at pos ");
-          Serial.print(pos);
-          Serial.print("/");
-          Serial.print(samples_per_interval);
-          Serial.println(" while closing");
+
+          if (debug_prints)
+          {
+            Serial.print("Calibrating at pos ");
+            Serial.print(pos);
+            Serial.print("/");
+            Serial.print(samples_per_interval);
+            Serial.println(" while closing");
+          }
         }
 
 
@@ -585,11 +580,13 @@ float hallPos(bool debug_prints)
     }
 
     float target_pos = estimated_pos / samples_per_interval;
-
-    Serial.print(" Confidence: ");
-    Serial.print(confidence);
-    Serial.print(" Target Position: ");
-    Serial.println(target_pos);
+    if (debug_prints)
+    {
+      Serial.print(" Confidence: ");
+      Serial.print(confidence);
+      Serial.print(" Target Position: ");
+      Serial.println(target_pos);
+    }
     // delay(100);
 
     hall_calib_button_push = get_hall_calib_button();
@@ -605,7 +602,7 @@ float hallPos(bool debug_prints)
 
 void vs_calib_switch()
 {
-  Serial.println("Switching to velostat sensor calibration.");
+  //Serial.println("Switching to velostat sensor calibration.");
   vs_s = calibration;
   vs_start_time = millis();
   vs_old_start_time = vs_start_time;
@@ -614,9 +611,8 @@ void vs_calib_switch()
   vs_data = (double **)malloc(total_vs_data * sizeof(double *));
   for (int i = 0; i < total_vs_data; i++)
     vs_data[i] = (double *)malloc(2 * sizeof(double));
-
-;
 }
+
 void velostatHandler(bool debug_prints, bool diagonal)
 {
   switch (vs_s)
@@ -640,11 +636,12 @@ void velostatHandler(bool debug_prints, bool diagonal)
 
   case calibration:
     // calibrate, storing in KNN
-    Serial.print("Calibrating VS Clasifier");
-    Serial.print(vs_calib_i);
-    Serial.print("/");
-    Serial.println(vs_sample_num);
-
+    if(debug_prints){
+      Serial.print("Calibrating VS Clasifier");
+      Serial.print(vs_calib_i);
+      Serial.print("/");
+      Serial.println(vs_sample_num);
+    }
     if (vs_calib_i < (vs_sample_num))
     {
       // delay sampling to achive desired rate
@@ -720,13 +717,15 @@ void velostatHandler(bool debug_prints, bool diagonal)
 
       // delay(5000);
     }
-    Serial.print("VS tactile clasifications: ");
-    for (int i = 0; i < vs_sen_num; i++)
-    {
-      Serial.print(outputStates[i][0]);
-      Serial.print(", ");
+    if(debug_prints){
+      Serial.print("VS tactile clasifications: ");
+      for (int i = 0; i < vs_sen_num; i++)
+      {
+        Serial.print(outputStates[i][0]);
+        Serial.print(", ");
+      }
+      Serial.println("");
     }
-    Serial.println("");
 
     Serial.print("Clasifications likklyhood: ");
     for (int i = 0; i < vs_sen_num; i++)
