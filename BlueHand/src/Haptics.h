@@ -4,7 +4,7 @@
 #include "Adafruit_DRV2605.h"
 #include <Wire.h>
 
-#define TCAADDR 0x70
+#define MUXADDR 0x70
 
 class Haptics {
     public:
@@ -15,6 +15,8 @@ class Haptics {
         Adafruit_DRV2605 drv0;
         Adafruit_DRV2605 drv1;
         Adafruit_DRV2605 drv2;
+        Adafruit_DRV2605 drv3;
+        Adafruit_DRV2605 drv4;
 };
 
 #endif

@@ -37,9 +37,15 @@ void Haptics::vibeselect(uint8_t i)
     case 2:
         drv = &drv2;
         break;
+    case 3:
+        drv = &drv3;
+        break;
+    case 4:
+        drv = &drv4;
+        break;
     }
 
-    Wire.beginTransmission(TCAADDR);
+    Wire.beginTransmission(MUXADDR);
     Wire.write(1 << i);
     Wire.endTransmission();
 }

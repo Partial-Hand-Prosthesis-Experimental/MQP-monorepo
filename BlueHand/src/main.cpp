@@ -38,20 +38,16 @@ bool deviceConnected = false;
 bool oldDeviceConnected = false;
 long lastNotifyTime = 0;
 
-int mux0readPin = 13;
-int mux0Pin0 = 25;
-int mux0Pin1 = 26;
-int mux0Pin2 = 27;
+int muxreadPin = 38;
+int muxPin0 = 25;
+int muxPin1 = 26;
+int muxPin2 = 27;
 
-int mux1readPin = 32;
-int mux1Pin0 = 15;
-int mux1Pin1 = 14;
-int mux1Pin2 = 4;
+int potPin = 6;
+int currentPin = 7;
 
-int potPin = 26;
-int currentPin = 27;
-volatile int potReading = 0;
-volatile int currentReading = 0;
+// volatile int potReading = 0;
+// volatile int currentReading = 0;
 int sharedPotReading = 0;
 int sharedCurrentReading = 0;
 
@@ -62,7 +58,7 @@ void IRAM_ATTR TimerHandler0();
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 hw_timer_t *timer = NULL;
 
-Motor motor(25, 33, &sharedPotReading, &sharedCurrentReading);
+Motor motor(18, 19, &sharedPotReading, &sharedCurrentReading);
 
 // See the following for generating UUIDs:
 // https://www.uuidgenerator.net/
@@ -111,8 +107,9 @@ void vs_calib_switch();
 float adc2v(int adc_val);
 long vsRead();
 long hRead();
-int muxedRead(int mux, int pin);
-float muxedReadVolts(int mux, int pin);
+void hapticHandler(bool debug_prints);
+int muxedRead(int pin);
+float muxedReadVolts(int pin);
 
 long update_elapsed_time();
 long update_hall_elapsed_time();
@@ -120,9 +117,9 @@ bool get_vs_calib_button();
 bool get_hall_calib_button();
 
 // Velostat Variables
-Haptics haptics(2);
+Haptics haptics(5);
 const int vs_sen_num = 5;
-int veloAddrs[vs_sen_num] = {0, 1, 2, 3, 4};
+int veloAddrs[vs_sen_num] = {32, 33, 39, 37, 36};
 
 float veloReadings[vs_sen_num][2] = {
     {0, 0},
@@ -158,12 +155,12 @@ const int buttonPin2 = 34;
 const int calib_button_pin = 35; // D4
 // const int potPin = 1; we both used pot pin
 
-const int Hall_1_Pin = 36; // Changed by drew
-const int Hall_2_Pin = 26;
-const int Hall_3_Pin = 27;
-const int Hall_4_Pin = 15;
-const int Hall_5_Pin = 14;
-const int Hall_6_Pin = 4;
+const int Hall_1_Pin = 0; // Changed by drew
+const int Hall_2_Pin = 1;
+const int Hall_3_Pin = 2;
+const int Hall_4_Pin = 3;
+const int Hall_5_Pin = 4;
+const int Hall_6_Pin = 5;
 
 // TODO refactor old button states
 int buttonState = 0;
@@ -329,8 +326,8 @@ long lastLoop = 0;
 void loop()
 {
   bool debug = false;
-  sharedCurrentReading = analogRead(currentPin);
-  sharedPotReading = analogRead(potPin) + sharedCurrentReading;
+  sharedCurrentReading = muxedRead(currentPin);
+  sharedPotReading = muxedRead(potPin) + sharedCurrentReading;
 
   if (micros() > lastLoop + 1000)
   {
@@ -345,6 +342,7 @@ void loop()
   {
     if (lastNotifyTime + 10 < millis())
     {
+      // test1.setValue(pos+abs(0.75*sin(millis()/1000.0)));
       test1.setValue(pos);
       test1.notify();
 
@@ -381,6 +379,7 @@ void loop()
   }
 
   velostatHandler(debug, false);
+  hapticHandler(debug);
 
   // delay(1);
 }
@@ -389,10 +388,10 @@ void loop()
 void IRAM_ATTR TimerHandler0()
 {
   portENTER_CRITICAL_ISR(&timerMux);
-  currentReading = analogRead(currentPin);
+  // currentReading = analogRead(currentPin);
   // Since jank electronics pushes up the gnd for the motor system, the reading
   // would naturally fall by the voltage dropped by the current sense resistor
-  potReading = analogRead(potPin) + currentReading;
+  // potReading = analogRead(potPin) + currentReading;
   portEXIT_CRITICAL_ISR(&timerMux);
 }
 
@@ -725,16 +724,16 @@ void velostatHandler(bool debug_prints, bool diagonal)
         Serial.print(", ");
       }
       Serial.println("");
+    
+      Serial.print("Clasifications likklyhood: ");
+      for (int i = 0; i < vs_sen_num; i++)
+      {
+        double d[] = {(double)veloReadings[i][0], (double)veloReadings[i][1]};
+        Serial.print(clusterer.Calculate_Likelihood(d));
+        Serial.print(", ");
+      }
+      Serial.println("");
     }
-
-    Serial.print("Clasifications likklyhood: ");
-    for (int i = 0; i < vs_sen_num; i++)
-    {
-      double d[] = {(double)veloReadings[i][0], (double)veloReadings[i][1]};
-      Serial.print(clusterer.Calculate_Likelihood(d));
-      Serial.print(", ");
-    }
-    Serial.println("");
 
     vs_calib_button_push = get_vs_calib_button();
     if (vs_calib_button_push)
@@ -764,7 +763,7 @@ long vsRead()
   for (int i = 0; i < sizeof(veloAddrs) / sizeof(int); i++)
   {
     lastVelo = veloReadings[i][0];
-    veloReadings[i][0] = vs_kalmans[i].updateEstimate((float)65.7 * powf(muxedReadVolts(0, i), -1.35)); // V to g
+    veloReadings[i][0] = vs_kalmans[i].updateEstimate((float)65.7 * powf(analogReadMilliVolts(veloAddrs[i])/1000.0, -1.35)); // V to g
     veloReadings[i][1] = (float)(veloReadings[i][0] - lastVelo);
   }
   return time;
@@ -772,13 +771,22 @@ long vsRead()
 long hRead()
 {
   long time = update_hall_elapsed_time();
-  hall_1 = Hall1KalmanFilter.updateEstimate(analogRead(Hall_1_Pin));
-  hall_2 = Hall2KalmanFilter.updateEstimate(analogRead(Hall_2_Pin));
-  hall_3 = Hall3KalmanFilter.updateEstimate(analogRead(Hall_3_Pin));
-  hall_4 = Hall4KalmanFilter.updateEstimate(analogRead(Hall_4_Pin));
-  hall_5 = Hall5KalmanFilter.updateEstimate(analogRead(Hall_5_Pin));
-  hall_6 = Hall6KalmanFilter.updateEstimate(analogRead(Hall_6_Pin));
+  hall_1 = Hall1KalmanFilter.updateEstimate(muxedRead(Hall_1_Pin));
+  hall_2 = Hall2KalmanFilter.updateEstimate(muxedRead(Hall_2_Pin));
+  hall_3 = Hall3KalmanFilter.updateEstimate(muxedRead(Hall_3_Pin));
+  hall_4 = Hall4KalmanFilter.updateEstimate(muxedRead(Hall_4_Pin));
+  hall_5 = Hall5KalmanFilter.updateEstimate(muxedRead(Hall_5_Pin));
+  hall_6 = Hall6KalmanFilter.updateEstimate(muxedRead(Hall_6_Pin));
   return time;
+}
+
+void hapticHandler(bool debug_prints) {
+  for(int i = 0; i < 5; i++){
+    haptics.vibeselect(i);
+    // TODO: change second index to current haptic mode from UI
+    haptics.drv->setWaveform(0, vibeSettings[i][1][outputStates[i][0]]);
+    haptics.drv->go();
+  }
 }
 
 long update_elapsed_time()
@@ -794,46 +802,26 @@ long update_hall_elapsed_time()
   return current_time;
 }
 
-int muxedRead(int mux, int pin)
+int muxedRead(int pin)
 {
   int val;
   vTaskEnterCritical(&timerMux);
-  if (mux == 0)
-  {
-    digitalWrite(mux0Pin2, pin >> 2 & 1);
-    digitalWrite(mux0Pin1, pin >> 1 & 1);
-    digitalWrite(mux0Pin0, pin & 1);
-    val = analogRead(mux0readPin);
-  }
-  else if (mux == 1)
-  {
-    digitalWrite(mux0Pin2, pin >> 2 & 1);
-    digitalWrite(mux0Pin1, pin >> 1 & 1);
-    digitalWrite(mux0Pin0, pin & 1);
-    val = analogRead(mux1readPin);
-  }
+  digitalWrite(muxPin2, pin >> 2 & 1);
+  digitalWrite(muxPin1, pin >> 1 & 1);
+  digitalWrite(muxPin0, pin & 1);
+  val = analogRead(muxreadPin);
   vTaskExitCritical(&timerMux);
   return val;
 }
 
-float muxedReadVolts(int mux, int pin)
+float muxedReadVolts(int pin)
 {
   int val;
   vTaskEnterCritical(&timerMux);
-  if (mux == 0)
-  {
-    digitalWrite(mux0Pin2, pin >> 2 & 1);
-    digitalWrite(mux0Pin1, pin >> 1 & 1);
-    digitalWrite(mux0Pin0, pin & 1);
-    val = analogReadMilliVolts(mux0readPin);
-  }
-  else if (mux == 1)
-  {
-    digitalWrite(mux0Pin2, pin >> 2 & 1);
-    digitalWrite(mux0Pin1, pin >> 1 & 1);
-    digitalWrite(mux0Pin0, pin & 1);
-    val = analogReadMilliVolts(mux1readPin);
-  }
+  digitalWrite(muxPin2, pin >> 2 & 1);
+  digitalWrite(muxPin1, pin >> 1 & 1);
+  digitalWrite(muxPin0, pin & 1);
+  val = analogReadMilliVolts(muxreadPin);
   vTaskExitCritical(&timerMux);
 
   return val / 1000.0;
