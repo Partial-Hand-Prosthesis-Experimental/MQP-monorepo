@@ -290,7 +290,7 @@ void setup()
 
   if (!preferences.isKey("modes"))
   {
-      uint8_t defaultModes[5] = {4, 1, 4, 3, 0};
+    uint8_t defaultModes[5] = {4, 4, 2, 4, 1};
     preferences.putBytes("modes", defaultModes, sizeof(defaultModes));
   }
   preferences.getBytes("modes", currentModes, sizeof(currentModes));
@@ -335,6 +335,7 @@ void setup()
     delay(hall_time_per_sample);
   } while (init_i < 20);
 
+
   // Setup timer
   // timer = timerBegin(1, 80, true);
   // timerAttachInterrupt(timer, &TimerHandler0, true);
@@ -350,17 +351,32 @@ void loop()
   sharedCurrentReading = muxedRead(currentPin);
   sharedPotReading = muxedRead(potPin) + sharedCurrentReading;
 
-  int pos = hallPos(debug);
+  float pos = hallPos(debug);
 
   if (micros() > lastLoop + 1000)
   {
-    switch(currentModes[0]){
-      case 0: 
+    static float velocity_target = 0.0;
+    const float velocity_rate = 0.02;
+    switch(currentModes[0]){ // Motor Mode indicator
+      case 0: // Off
+        velocity_target = 0.0;
         motor.speed(0.0);
         break;
+      case 1: // Position
+        motor.position(pos * (3800 - 350) + 350, constrain(test3.getFloat() * 0.2, 0, 0.2));
+        break;
+      case 2: // Velocity
+        velocity_target = constrain(velocity_target+(pos*2-1)*velocity_rate , 0, 1);
+        motor.position(velocity_target * (3800 - 350) + 350, constrain(test3.getFloat() * 0.2, 0, 0.2));
+        break;
+      case 3: // Velocity + Torque
+        velocity_target = constrain(velocity_target+(pos*2-1)*velocity_rate , 0, 1);
+        motor.position(velocity_target * (3800 - 350) + 350, constrain(test3.getFloat() * 0.2, 0, 0.2));
+        break; 
       case 4: // Sweep
         float target = 0.5 * (sin(2 * PI * millis() / (10000.0)) + 1);
         motor.position(target * (3800 - 350) + 350, constrain(test3.getFloat() * 0.2, 0, 0.2));
+        break;
     }
     lastLoop = micros();
   }
@@ -384,6 +400,16 @@ void loop()
       preferences.getBytes("vibConf", vibeSettings, sizeof(vibeSettings));
       vibConf.setBytes((uint8_t *)vibeSettings, sizeof(vibeSettings));
       vibConf.notify();
+      uint8_t newModes[5];
+      for(int i = 0; i < 5; i++){
+        newModes[i] = modes.getData()[i];
+      }
+      // Set Vibration Mode Permanently anytime its switched
+      if(newModes[2] != currentModes[2]){ 
+        currentModes[2] = newModes[2];
+        preferences.putBytes("modes", currentModes, sizeof(currentModes));
+      }
+
       lastNotifyTime = millis();
     }
   }

@@ -16,7 +16,7 @@ union FloatConversion
 class BLEProp
 {
 public:
-    BLEProp(const char *uuidS, const char *uuidC, uint32_t properties, int8_t _byteCount);
+    BLEProp(const char *uuidS, const char *uuidC, uint32_t properties, size_t _byteCount);
     void setCallbacks(BLECharacteristicCallbacks *callbacks);
     void start();
     void notify();
@@ -26,7 +26,7 @@ public:
     const char *getStr();
     float getFloat();
     void attach(BLEServer *pServer);
-    int8_t byteCount;
+    size_t byteCount;
 
 private:
     const char *uuidService;

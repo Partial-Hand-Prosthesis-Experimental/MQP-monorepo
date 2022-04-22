@@ -1,6 +1,6 @@
 #include <BLEProp.h>
 
-BLEProp::BLEProp(const char *uuidS, const char *uuidC, uint32_t properties, int8_t _byteCount)
+BLEProp::BLEProp(const char *uuidS, const char *uuidC, uint32_t properties, size_t _byteCount)
 {
     uuidService = uuidS;
     uuidCharacteristic = uuidC;
