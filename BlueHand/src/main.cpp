@@ -372,7 +372,7 @@ void loop()
         break;
       case 3: // Velocity + Torque
         velocity_target = constrain(velocity_target+(pos*2-1)*velocity_rate , 0, 1);
-        motor.position(velocity_target * (3800 - 350) + 350, constrain(test3.getFloat() * 0.2, 0, 0.2));
+        motor.position(velocity_target * (3800 - 350) + 350, constrain((pos*2-1) * 0.2, 0, 0.2));
         break; 
       case 4: // Sweep
         target = 0.5 * (sin(2 * PI * millis() / (10000.0)) + 1);
