@@ -347,7 +347,7 @@ long lastLoop = 0;
 
 void loop()
 {
-  bool debug = false;
+  static bool debug = true;
   sharedCurrentReading = muxedRead(currentPin);
   sharedPotReading = muxedRead(potPin) + sharedCurrentReading;
 
@@ -357,6 +357,7 @@ void loop()
   {
     static float velocity_target = 0.0;
     const float velocity_rate = 0.02;
+    float target;
     switch(currentModes[0]){ // Motor Mode indicator
       case 0: // Off
         velocity_target = 0.0;
@@ -374,8 +375,14 @@ void loop()
         motor.position(velocity_target * (3800 - 350) + 350, constrain(test3.getFloat() * 0.2, 0, 0.2));
         break; 
       case 4: // Sweep
-        float target = 0.5 * (sin(2 * PI * millis() / (10000.0)) + 1);
+        target = 0.5 * (sin(2 * PI * millis() / (10000.0)) + 1);
         motor.position(target * (3800 - 350) + 350, constrain(test3.getFloat() * 0.2, 0, 0.2));
+        break;
+      case 5:
+        motor.position(350, constrain(test3.getFloat() * 0.2, 0, 0.2));
+        break;
+      case 6:
+        motor.position(3800, constrain(test3.getFloat() * 0.2, 0, 0.2));
         break;
     }
     lastLoop = micros();
@@ -409,14 +416,33 @@ void loop()
         currentModes[2] = newModes[2];
         preferences.putBytes("modes", currentModes, sizeof(currentModes));
       }
+      currentModes[0] = newModes[0];
+      currentModes[0] = newModes[0];
+      currentModes[2] = newModes[2];
+      currentModes[1] = newModes[1];
+      currentModes[3] = newModes[3];
+      switch(newModes[4]){
+        case 0: // Off
+          debug = false;
+          break;
+        case 1: // debug
+          debug = true;
+          break;
+        case 2: // Save defaults
+          preferences.putBytes("modes", currentModes, sizeof(currentModes));
+        case 3: // Load defaults
+          preferences.getBytes("modes", currentModes, sizeof(currentModes));
+      }
+      modes.setBytes(currentModes, 5);
+      modes.notify();
 
       lastNotifyTime = millis();
     }
   }
-
   // disconnecting
   if (!deviceConnected && oldDeviceConnected)
   {
+    motor.speed(0.0);
     delay(500); // give the bluetooth stack the chance to get things ready
     pServer->disconnect(0);
     pServer->getAdvertising()->setScanResponse(true);
@@ -433,8 +459,8 @@ void loop()
     Serial.println("Client Connected");
   }
 
-  velostatHandler(debug, false);
-  hapticHandler(debug);
+  velostatHandler(false, false);
+  hapticHandler(false);
 
   // delay(1);
 }
@@ -488,28 +514,24 @@ float hallPos(bool debug_prints)
       // delay sampling to achive desired rate
       if ((millis() - hall_old_start_time) < (hall_time_per_sample))
       {
-        if (debug_prints)
-        {
-          Serial.println("Hall calibration reading delayed.");
-        }
       }
       else
       {
         hall_sample_time = hRead();
-        if (debug_prints)
-        {
+        // if (debug_prints)
+        // {
 
-          Serial.print(" actual interval: ");
-          Serial.print(hall_sample_time - hall_old_start_time);
-          Serial.print(" desired interval: ");
-          Serial.println(hall_time_per_sample);
-        }
+        //   Serial.print(" actual interval: ");
+        //   Serial.print(hall_sample_time - hall_old_start_time);
+        //   Serial.print(" desired interval: ");
+        //   Serial.println(hall_time_per_sample);
+        // }
         int diff = hall_sample_time - hall_old_start_time;
-        if (diff > sample_rate_threshold)
-        {
-          Serial.print("Large sample rate difference detected. Diference of ");
-          Serial.println(diff);
-        }
+        // if (diff > sample_rate_threshold)
+        // {
+        //   Serial.print("Large sample rate difference detected. Diference of ");
+        //   Serial.println(diff);
+        // }
 
         bool opening = (int)floor((hall_calib_i) / samples_per_interval) % 2 == 0;
         int pos = 0;
@@ -568,7 +590,7 @@ float hallPos(bool debug_prints)
           Serial.print(", ");
           Serial.println(hall_6);
 
-          delay(1);
+          //delay(1);
         }
 
         hall_calib_i++;
@@ -860,24 +882,24 @@ long update_hall_elapsed_time()
 int muxedRead(int pin)
 {
   int val;
-  vTaskEnterCritical(&timerMux);
+  //vTaskEnterCritical(&timerMux);
   digitalWrite(muxPin2, pin >> 2 & 1);
   digitalWrite(muxPin1, pin >> 1 & 1);
   digitalWrite(muxPin0, pin & 1);
   val = analogRead(muxreadPin);
-  vTaskExitCritical(&timerMux);
+  //vTaskExitCritical(&timerMux);
   return val;
 }
 
 float muxedReadVolts(int pin)
 {
   int val;
-  vTaskEnterCritical(&timerMux);
+  //vTaskEnterCritical(&timerMux);
   digitalWrite(muxPin2, pin >> 2 & 1);
   digitalWrite(muxPin1, pin >> 1 & 1);
   digitalWrite(muxPin0, pin & 1);
   val = analogReadMilliVolts(muxreadPin);
-  vTaskExitCritical(&timerMux);
+  //vTaskExitCritical(&timerMux);
 
   return val / 1000.0;
 }

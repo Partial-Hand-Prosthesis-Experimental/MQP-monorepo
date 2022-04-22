@@ -13,12 +13,12 @@ Motor::Motor(int pinA1, int pinA2, volatile int* potReading, volatile int* curre
 
     // Setup minipid
     _pid.reset();
-    _pid.setPID(0.0005, 0.000002, 0.001);
+    _pid.setPID(0.0002, 0.000001, 0.0007);
     _pid.setOutputLimits(-1.0, 1.0);
     _currentpid.reset();
-    _currentpid.setPID(1.0, 0.05, 0.0);
+    _currentpid.setPID(0.8, 0.05, 0.0);
     _currentpid.setOutputLimits(-65535.0, 65535.0);
-    _currentpid.setOutputFilter(0.4);
+    _currentpid.setOutputFilter(0.1);
 }
 
 Motor::Motor(int pinA1, int pinA2, volatile int* potReading, volatile int* currentReading, BLEProp* prop) {
