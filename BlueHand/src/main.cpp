@@ -73,12 +73,16 @@ Motor motor(18, 19, &sharedPotReading, &sharedCurrentReading);
 #define CHARACTERISTIC_UUID_VELO "6e400004-b5a3-f393-e0a9-e50e24dcca9e"
 #define SERVICE_UUID_VELO2 "6e400009-b5a3-f393-e0a9-e50e24dcca9e"
 #define CHARACTERISTIC_UUID_VELO2 "6e40000a-b5a3-f393-e0a9-e50e24dcca9e"
-#define SERVICE_UUID_VELO2 "6e40000b-b5a3-f393-e0a9-e50e24dcca9e"
-#define CHARACTERISTIC_UUID_VELO2 "6e40000d-b5a3-f393-e0a9-e50e24dcca9e"
+#define SERVICE_UUID_MODES "6e40000b-b5a3-f393-e0a9-e50e24dcca9e"
+#define CHARACTERISTIC_UUID_MODES "6e40000d-b5a3-f393-e0a9-e50e24dcca9e"
 
 BLEProp test1(SERVICE_UUID_TEST1, CHARACTERISTIC_UUID_TEST1, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
 BLEProp test3(SERVICE_UUID_TEST3, CHARACTERISTIC_UUID_TEST3, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
 
+// 4 bytes auto casted to float32 on web, use != mod 4
+BLEProp modes(SERVICE_UUID_MODES, CHARACTERISTIC_UUID_MODES, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 5); 
+uint8_t currentModes[5] = {0, 0, 0, 0, 0};
+uint8_t lastModes[5] = {0, 0, 0, 0, 0};
 BLEProp velo(SERVICE_UUID_VELO, CHARACTERISTIC_UUID_VELO, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4 * 20);
 
 BLEProp velo2(SERVICE_UUID_VELO2, CHARACTERISTIC_UUID_VELO2, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
@@ -239,6 +243,13 @@ Gaussian_Mixture_Model clusterer("other", 2, vibrohaptic_response_num);
 void setup()
 {
   Serial.begin(115200);
+
+  pinMode(muxPin0, OUTPUT);
+  pinMode(muxPin1, OUTPUT);
+  pinMode(muxPin2, OUTPUT);
+  pinMode(muxreadPin, INPUT);
+
+
   preferences.begin("vibro", false);
   if (!preferences.isKey("vibConf"))
   {
@@ -277,6 +288,14 @@ void setup()
   velo.attach(pServer);
   velo2.attach(pServer);
 
+  if (!preferences.isKey("modes"))
+  {
+      uint8_t defaultModes[5] = {4, 1, 4, 3, 0};
+    preferences.putBytes("modes", defaultModes, sizeof(defaultModes));
+  }
+  preferences.getBytes("modes", currentModes, sizeof(currentModes));
+  modes.attach(pServer);
+
   Serial.println("Server initialized");
 
   // Start advertising
@@ -290,6 +309,8 @@ void setup()
 
   velo2.setValue(0.0);
   vibConf.setBytes((uint8_t *)vibeSettings, sizeof(vibeSettings));
+
+  modes.setBytes(currentModes, 5);
 
   vibConf.notify();
   velo.notify();
@@ -329,21 +350,29 @@ void loop()
   sharedCurrentReading = muxedRead(currentPin);
   sharedPotReading = muxedRead(potPin) + sharedCurrentReading;
 
+  int pos = hallPos(debug);
+
   if (micros() > lastLoop + 1000)
   {
-    float target = 0.5 * (sin(2 * PI * millis() / (10000.0)) + 1);
-    motor.position(target * (3800 - 350) + 350, constrain(test3.getFloat() * 0.2, 0, 0.2));
+    switch(currentModes[0]){
+      case 0: 
+        motor.speed(0.0);
+        break;
+      case 4: // Sweep
+        float target = 0.5 * (sin(2 * PI * millis() / (10000.0)) + 1);
+        motor.position(target * (3800 - 350) + 350, constrain(test3.getFloat() * 0.2, 0, 0.2));
+    }
     lastLoop = micros();
   }
 
-  int pos = hallPos(debug);
-  
+
+
   if (deviceConnected)
   {
     if (lastNotifyTime + 10 < millis())
     {
       // test1.setValue(pos+abs(0.75*sin(millis()/1000.0)));
-      test1.setValue(pos);
+      test1.setValue(sharedPotReading);
       test1.notify();
 
       velo.setBytes((uint8_t *)veloReadings, 4 * 20);
