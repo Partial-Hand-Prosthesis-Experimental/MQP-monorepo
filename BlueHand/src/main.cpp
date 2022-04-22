@@ -362,6 +362,9 @@ void loop()
 {
   static bool debug = true;
   sharedCurrentReading = muxedRead(currentPin);
+  if(print_torque_data){
+    Serial.println(sharedCurrentReading);
+  }
   sharedPotReading = muxedRead(potPin) + sharedCurrentReading;
 
   float pos = hallPos(debug);
@@ -830,9 +833,8 @@ void velostatHandler(bool debug_prints, bool diagonal)
         Serial.print(veloReadings[i][1]);
         Serial.print(", ");
         Serial.print(outputStates[i][0]);
-        Serial.print(", ");
+        Serial.println(", ");
       }
-      Serial.println("");
     }
 
     if (debug_prints)
