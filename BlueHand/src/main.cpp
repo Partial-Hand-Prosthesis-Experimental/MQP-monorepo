@@ -80,7 +80,7 @@ BLEProp test1(SERVICE_UUID_TEST1, CHARACTERISTIC_UUID_TEST1, BLECharacteristic::
 BLEProp test3(SERVICE_UUID_TEST3, CHARACTERISTIC_UUID_TEST3, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4);
 
 // 4 bytes auto casted to float32 on web, use != mod 4
-BLEProp modes(SERVICE_UUID_MODES, CHARACTERISTIC_UUID_MODES, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 5); 
+BLEProp modes(SERVICE_UUID_MODES, CHARACTERISTIC_UUID_MODES, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 5);
 uint8_t currentModes[5] = {0, 0, 0, 0, 0};
 uint8_t lastModes[5] = {0, 0, 0, 0, 0};
 BLEProp velo(SERVICE_UUID_VELO, CHARACTERISTIC_UUID_VELO, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE, 4 * 20);
@@ -240,8 +240,15 @@ int vibrohaptic_response_num = 3;
 // KMeans myKMeans(2, vibrohaptic_response_num);
 Gaussian_Mixture_Model clusterer("other", 2, vibrohaptic_response_num);
 
+// print booleans
+bool print_tactile_data = false;
+bool print_hall_data = false;
+bool print_torque_data = false;
+bool print_pos_max_force_data = false;
+
 void setup()
 {
+
   Serial.begin(115200);
 
   pinMode(muxPin0, OUTPUT);
@@ -249,11 +256,13 @@ void setup()
   pinMode(muxPin2, OUTPUT);
   pinMode(muxreadPin, INPUT);
 
-
   preferences.begin("vibro", false);
   if (!preferences.isKey("vibConf"))
   {
-    Serial.println("No vibConf key found. Creating...");
+    if (!print_tactile_data && !print_tactile_data && !print_torque_data && !print_pos_max_force_data)
+    {
+      Serial.println("No vibConf key found. Creating...");
+    }
     uint8_t initialConfig[vs_sen_num][3][3];
     for (int i = 0; i < vs_sen_num; i++)
     {
@@ -269,9 +278,12 @@ void setup()
       initialConfig[i][2][1] = 50;
       initialConfig[i][2][2] = 51;
     }
-    Serial.print("Generated ");
-    Serial.print(sizeof(initialConfig));
-    Serial.println(" bytes");
+    if (!print_tactile_data && !print_tactile_data && !print_torque_data && !print_pos_max_force_data)
+    {
+      Serial.print("Generated ");
+      Serial.print(sizeof(initialConfig));
+      Serial.println(" bytes");
+    }
     preferences.putBytes("vibConf", initialConfig, sizeof(initialConfig));
   }
   preferences.getBytes("vibConf", vibeSettings, sizeof(vibeSettings));
@@ -295,9 +307,10 @@ void setup()
   }
   preferences.getBytes("modes", currentModes, sizeof(currentModes));
   modes.attach(pServer);
-
-  Serial.println("Server initialized");
-
+  if (!print_tactile_data && !print_tactile_data && !print_torque_data && !print_pos_max_force_data)
+  {
+    Serial.println("Server initialized");
+  }
   // Start advertising
   pServer->getAdvertising()->setScanResponse(true);
   pServer->getAdvertising()->start();
@@ -317,9 +330,10 @@ void setup()
   velo2.notify();
   test1.notify();
   test3.notify();
-
-  Serial.println("Waiting a client connection to notify...");
-
+  if (!print_tactile_data && !print_tactile_data && !print_torque_data && !print_pos_max_force_data)
+  {
+    Serial.println("Waiting a client connection to notify...");
+  }
   // Brian Setup
   pinMode(buttonPin, INPUT);
   pinMode(buttonPin2, INPUT);
@@ -334,7 +348,6 @@ void setup()
     init_i++;
     delay(hall_time_per_sample);
   } while (init_i < 20);
-
 
   // Setup timer
   // timer = timerBegin(1, 80, true);
@@ -358,37 +371,36 @@ void loop()
     static float velocity_target = 0.0;
     const float velocity_rate = 0.02;
     float target;
-    switch(currentModes[0]){ // Motor Mode indicator
-      case 0: // Off
-        velocity_target = 0.0;
-        motor.speed(0.0);
-        break;
-      case 1: // Position
-        motor.position(pos * (3800 - 350) + 350, constrain(test3.getFloat() * 0.2, 0, 0.2));
-        break;
-      case 2: // Velocity
-        velocity_target = constrain(velocity_target+(pos*2-1)*velocity_rate , 0, 1);
-        motor.position(velocity_target * (3800 - 350) + 350, constrain(test3.getFloat() * 0.2, 0, 0.2));
-        break;
-      case 3: // Velocity + Torque
-        velocity_target = constrain(velocity_target+(pos*2-1)*velocity_rate , 0, 1);
-        motor.position(velocity_target * (3800 - 350) + 350, constrain((pos*2-1) * 0.2, 0, 0.2));
-        break; 
-      case 4: // Sweep
-        target = 0.5 * (sin(2 * PI * millis() / (10000.0)) + 1);
-        motor.position(target * (3800 - 350) + 350, constrain(test3.getFloat() * 0.2, 0, 0.2));
-        break;
-      case 5:
-        motor.position(350, constrain(test3.getFloat() * 0.2, 0, 0.2));
-        break;
-      case 6:
-        motor.position(3800, constrain(test3.getFloat() * 0.2, 0, 0.2));
-        break;
+    switch (currentModes[0])
+    {       // Motor Mode indicator
+    case 0: // Off
+      velocity_target = 0.0;
+      motor.speed(0.0);
+      break;
+    case 1: // Position
+      motor.position(pos * (3800 - 350) + 350, constrain(test3.getFloat() * 0.2, 0, 0.2));
+      break;
+    case 2: // Velocity
+      velocity_target = constrain(velocity_target + (pos * 2 - 1) * velocity_rate, 0, 1);
+      motor.position(velocity_target * (3800 - 350) + 350, constrain(test3.getFloat() * 0.2, 0, 0.2));
+      break;
+    case 3: // Velocity + Torque
+      velocity_target = constrain(velocity_target + (pos * 2 - 1) * velocity_rate, 0, 1);
+      motor.position(velocity_target * (3800 - 350) + 350, constrain((pos * 2 - 1) * 0.2, 0, 0.2));
+      break;
+    case 4: // Sweep
+      target = 0.5 * (sin(2 * PI * millis() / (10000.0)) + 1);
+      motor.position(target * (3800 - 350) + 350, constrain(test3.getFloat() * 0.2, 0, 0.2));
+      break;
+    case 5:
+      motor.position(350, constrain(test3.getFloat() * 0.2, 0, 0.2));
+      break;
+    case 6:
+      motor.position(3800, constrain(test3.getFloat() * 0.2, 0, 0.2));
+      break;
     }
     lastLoop = micros();
   }
-
-
 
   if (deviceConnected)
   {
@@ -408,11 +420,13 @@ void loop()
       vibConf.setBytes((uint8_t *)vibeSettings, sizeof(vibeSettings));
       vibConf.notify();
       uint8_t newModes[5];
-      for(int i = 0; i < 5; i++){
+      for (int i = 0; i < 5; i++)
+      {
         newModes[i] = modes.getData()[i];
       }
       // Set Vibration Mode Permanently anytime its switched
-      if(newModes[2] != currentModes[2]){ 
+      if (newModes[2] != currentModes[2])
+      {
         currentModes[2] = newModes[2];
         preferences.putBytes("modes", currentModes, sizeof(currentModes));
       }
@@ -421,17 +435,18 @@ void loop()
       currentModes[2] = newModes[2];
       currentModes[1] = newModes[1];
       currentModes[3] = newModes[3];
-      switch(newModes[4]){
-        case 0: // Off
-          debug = false;
-          break;
-        case 1: // debug
-          debug = true;
-          break;
-        case 2: // Save defaults
-          preferences.putBytes("modes", currentModes, sizeof(currentModes));
-        case 3: // Load defaults
-          preferences.getBytes("modes", currentModes, sizeof(currentModes));
+      switch (newModes[4])
+      {
+      case 0: // Off
+        debug = false;
+        break;
+      case 1: // debug
+        debug = true;
+        break;
+      case 2: // Save defaults
+        preferences.putBytes("modes", currentModes, sizeof(currentModes));
+      case 3: // Load defaults
+        preferences.getBytes("modes", currentModes, sizeof(currentModes));
       }
       modes.setBytes(currentModes, 5);
       modes.notify();
@@ -447,16 +462,25 @@ void loop()
     pServer->disconnect(0);
     pServer->getAdvertising()->setScanResponse(true);
     pServer->startAdvertising(); // restart advertising
-    Serial.println("start advertising");
+    if (!print_tactile_data && !print_tactile_data && !print_torque_data && !print_pos_max_force_data)
+    {
+      Serial.println("start advertising");
+    }
     oldDeviceConnected = deviceConnected;
-    Serial.println("Client Disconnected");
+    if (!print_tactile_data && !print_tactile_data && !print_torque_data && !print_pos_max_force_data)
+    {
+      Serial.println("Client Disconnected");
+    }
   }
   // connecting
   if (deviceConnected && !oldDeviceConnected)
   {
     // do stuff here on connecting
     oldDeviceConnected = deviceConnected;
-    Serial.println("Client Connected");
+    if (!print_tactile_data && !print_tactile_data && !print_torque_data && !print_pos_max_force_data)
+    {
+      Serial.println("Client Connected");
+    }
   }
 
   velostatHandler(false, false);
@@ -538,7 +562,7 @@ float hallPos(bool debug_prints)
         if (opening)
         {
           pos = hall_calib_i % samples_per_interval;
-        if (debug_prints)
+          if (debug_prints)
           {
             Serial.print("Calibrating at pos ");
             Serial.print(pos);
@@ -560,7 +584,6 @@ float hallPos(bool debug_prints)
             Serial.println(" while closing");
           }
         }
-
 
         float input[] = {adc2v(hall_1), adc2v(hall_2), adc2v(hall_3), adc2v(hall_4), adc2v(hall_5), adc2v(hall_6)};
         myKNN.addExample(input, pos);
@@ -590,7 +613,7 @@ float hallPos(bool debug_prints)
           Serial.print(", ");
           Serial.println(hall_6);
 
-          //delay(1);
+          // delay(1);
         }
 
         hall_calib_i++;
@@ -678,7 +701,7 @@ float hallPos(bool debug_prints)
 
 void vs_calib_switch()
 {
-  //Serial.println("Switching to velostat sensor calibration.");
+  // Serial.println("Switching to velostat sensor calibration.");
   vs_s = calibration;
   vs_start_time = millis();
   vs_old_start_time = vs_start_time;
@@ -712,13 +735,15 @@ void velostatHandler(bool debug_prints, bool diagonal)
 
   case calibration:
     // calibrate, storing in KNN
-    if(debug_prints){
-      Serial.print("Calibrating VS Clasifier");
+    if (debug_prints || print_tactile_data)
+    {
+      Serial.print("Calibrating velostat clasifier");
       Serial.print(vs_calib_i);
       Serial.print("/");
       Serial.println(vs_sample_num);
     }
     if (vs_calib_i < (vs_sample_num))
+
     {
       // delay sampling to achive desired rate
       if ((millis() - (vs_old_start_time)) < (vs_time_per_sample))
@@ -758,13 +783,16 @@ void velostatHandler(bool debug_prints, bool diagonal)
     }
     else
     {
-      Serial.println("Calibrated, initialising Kmeans...");
-      Serial.println(vs_data[1][1]);
-
+      if (!print_tactile_data && !print_tactile_data && !print_torque_data && !print_pos_max_force_data)
+      {
+        Serial.println("Calibrated, initialising Kmeans...");
+        Serial.println(vs_data[1][1]);
+      }
       clusterer.Initialize(total_vs_data, vs_data);
-
-      Serial.println("Kmeans initialized, now clasifying VS inputs. ");
-
+      if (!print_tactile_data && !print_tactile_data && !print_torque_data && !print_pos_max_force_data)
+      {
+        Serial.println("Kmeans initialized, now clasifying VS inputs. ");
+      }
       for (int i = 0; i < total_vs_data; i++)
         free(vs_data[i]);
       free(vs_data);
@@ -790,10 +818,25 @@ void velostatHandler(bool debug_prints, bool diagonal)
         Serial.print(", ");
         Serial.println(veloReadings[i][1]);
       }
-
       // delay(5000);
     }
-    if(debug_prints){
+
+    if (print_tactile_data)
+    {
+      for (int i = 0; i < vs_sen_num; i++)
+      {
+        Serial.print(veloReadings[i][0]);
+        Serial.print(", ");
+        Serial.print(veloReadings[i][1]);
+        Serial.print(", ");
+        Serial.print(outputStates[i][0]);
+        Serial.print(", ");
+      }
+      Serial.println("");
+    }
+
+    if (debug_prints)
+    {
       Serial.print("VS tactile clasifications: ");
       for (int i = 0; i < vs_sen_num; i++)
       {
@@ -801,7 +844,7 @@ void velostatHandler(bool debug_prints, bool diagonal)
         Serial.print(", ");
       }
       Serial.println("");
-    
+
       Serial.print("Clasifications likklyhood: ");
       for (int i = 0; i < vs_sen_num; i++)
       {
@@ -840,7 +883,7 @@ long vsRead()
   for (int i = 0; i < sizeof(veloAddrs) / sizeof(int); i++)
   {
     lastVelo = veloReadings[i][0];
-    veloReadings[i][0] = vs_kalmans[i].updateEstimate((float)65.7 * powf(analogReadMilliVolts(veloAddrs[i])/1000.0, -1.35)); // V to g
+    veloReadings[i][0] = vs_kalmans[i].updateEstimate((float)65.7 * powf(analogReadMilliVolts(veloAddrs[i]) / 1000.0, -1.35)); // V to g
     veloReadings[i][1] = (float)(veloReadings[i][0] - lastVelo);
   }
   return time;
@@ -857,8 +900,10 @@ long hRead()
   return time;
 }
 
-void hapticHandler(bool debug_prints) {
-  for(int i = 0; i < 5; i++){
+void hapticHandler(bool debug_prints)
+{
+  for (int i = 0; i < 5; i++)
+  {
     haptics.vibeselect(i);
     // TODO: change second index to current haptic mode from UI
     haptics.drv->setWaveform(0, vibeSettings[i][1][outputStates[i][0]]);
@@ -882,24 +927,24 @@ long update_hall_elapsed_time()
 int muxedRead(int pin)
 {
   int val;
-  //vTaskEnterCritical(&timerMux);
+  // vTaskEnterCritical(&timerMux);
   digitalWrite(muxPin2, pin >> 2 & 1);
   digitalWrite(muxPin1, pin >> 1 & 1);
   digitalWrite(muxPin0, pin & 1);
   val = analogRead(muxreadPin);
-  //vTaskExitCritical(&timerMux);
+  // vTaskExitCritical(&timerMux);
   return val;
 }
 
 float muxedReadVolts(int pin)
 {
   int val;
-  //vTaskEnterCritical(&timerMux);
+  // vTaskEnterCritical(&timerMux);
   digitalWrite(muxPin2, pin >> 2 & 1);
   digitalWrite(muxPin1, pin >> 1 & 1);
   digitalWrite(muxPin0, pin & 1);
   val = analogReadMilliVolts(muxreadPin);
-  //vTaskExitCritical(&timerMux);
+  // vTaskExitCritical(&timerMux);
 
   return val / 1000.0;
 }
